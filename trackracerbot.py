@@ -15,6 +15,8 @@ client_id = os.getenv('TWITCH_CLIENT_ID')
 client_secret = os.getenv('TWITCH_CLIENT_SECRET')
 access_token = os.getenv('TWITCH_ACCESS_TOKEN')
 refresh_token = os.getenv('TWITCH_REFRESH_TOKEN')
+TWITCH_CHANNEL = os.getenv('TWITCH_CHANNEL')
+BOT_NAME = os.getenv('TWITCH_BOT_NAME')
 api_key = os.getenv('YOUTUBE_API_KEY')
 live_chat_id = os.getenv('YOUTUBE_LIVE_CHAT_ID')
 
@@ -23,10 +25,6 @@ entry_queue = collections.deque()
 
 # Set maximum number of entries
 MAX_ENTRIES = 15
-
-# Set Twitch Channel to watch chat for
-TWITCH_CHANNEL="ArtMann"
-BOT_NAME="2BeerBot"
 
 # Handle incoming chat messages (passed data from twitch or Youtube)
 async def handle_message(message: str, author: str, twitch_message: TwitchMessage = None):
