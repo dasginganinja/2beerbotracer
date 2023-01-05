@@ -1,13 +1,11 @@
 from dotenv import load_dotenv
 import os
 import collections
+import itertools
 import threading
 
-from twitchAPI import Twitch
-from twitchAPI.oauth import UserAuthenticator
-from twitchAPI.types import AuthScope, ChatEvent
-from twitchAPI.chat import Chat, EventData, ChatMessage, ChatSub, JoinedEvent
-import asyncio
+from twitchio.ext import commands
+from twitchio.message import Message as TwitchMessage
 
 # Load the values from the .env file
 load_dotenv()
@@ -15,6 +13,8 @@ load_dotenv()
 # Use the values in the app
 client_id = os.getenv('TWITCH_CLIENT_ID')
 client_secret = os.getenv('TWITCH_CLIENT_SECRET')
+access_token = os.getenv('TWITCH_ACCESS_TOKEN')
+refresh_token = os.getenv('TWITCH_REFRESH_TOKEN')
 api_key = os.getenv('YOUTUBE_API_KEY')
 live_chat_id = os.getenv('YOUTUBE_LIVE_CHAT_ID')
 
@@ -25,22 +25,24 @@ entry_queue = collections.deque()
 MAX_ENTRIES = 15
 
 # Set Twitch Channel to watch chat for
-TWITCH_CHANNEL="2BeerMinimumRacing"
-
-# Set scope for chat
-USER_SCOPE = [AuthScope.CHAT_READ, AuthScope.CHAT_EDIT]
+TWITCH_CHANNEL="ArtMann"
+BOT_NAME="2BeerBot"
 
 # Handle incoming chat messages (passed data from twitch or Youtube)
-def handle_message(message, author):
+async def handle_message(message: str, author: str, twitch_message: TwitchMessage = None):
     # Check if we have a race entry
     # !race !enter !join - add to queue
     # !startrace - remove the first MAX_ENTRIES from queue
     # !clearentries - clear list of entries
     # !entries - print entries in race
 
+    is_mod = False
+    if twitch_message is not None and twitch_message.author is not None:
+        is_mod = twitch_message.author.is_mod
+
     if message.startswith("!race") or message.startswith("!enter") or message.startswith("!join"):
         if author in entry_queue:
-            print_everywhere("You have already entered, " + author + ". Nice try :)")
+            await print_everywhere("You have already entered, " + author + ". Nice try :)", twitch_message=twitch_message)
             return
 
         # Add to entry queue
@@ -48,30 +50,33 @@ def handle_message(message, author):
 
         # Print message when queue is full
         if len(entry_queue) >= MAX_ENTRIES:
-            print_everywhere("The list is full. Races starting soon!")
+            await print_everywhere("The list is full. Races starting soon!", twitch_message=twitch_message)
         else:
-            print_everywhere("You have been added, " + author)
-    elif message.startswith("!startrace"):
-        print_everywhere("Starting race and removing first " + str(MAX_ENTRIES) + " entries from the entry list.")
+            await print_everywhere("You have been added, " + author, twitch_message=twitch_message)
+    elif message.startswith("!startrace") and is_mod:
+        await print_everywhere("Starting race for " + ", ".join(itertools.islice(entry_queue,0,15)), twitch_message=twitch_message)
         # Remove the first MAX_ENTRIES from the queue
         for i in range(MAX_ENTRIES):
             if len(entry_queue) > 0:
-                entry_queue.popleft()
-    elif message.startswith("!clearentries"):
+                racer = entry_queue.popleft()
+                
+    elif message.startswith("!clearentries") and is_mod:
         # Clear the queue
         entry_queue.clear()
+        await print_everywhere("All entries have been cleared.", twitch_message=twitch_message)
     elif message.startswith("!entries"):
         # Print the queue
-        print_everywhere(", ".join(entry_queue))
-    else:
-        print("I farted")
+        await print_everywhere("Race Entries: " + ", ".join(entry_queue), twitch_message=twitch_message)
 
 # Function for printing the message in console, twitch, and youtube chats
-def print_everywhere(logmessage):
+async def print_everywhere(logmessage: str, twitch_message: TwitchMessage = None):
     # Print to local console
     print(logmessage)
 
     # TODO: Print this message in Twitch chat
+    if twitch_message is not None:
+        await twitch_message.channel.send(logmessage)
+
     # TODO: Print this message in YT chat
 
 # Testing of the handle message function is essential to make sure this works as expected.
@@ -101,66 +106,29 @@ def do_test():
     handle_message("!entries", "ArtMann")
 
 # this will be called when the event READY is triggered, which will be on bot start
-async def on_ready(ready_event: EventData):
-    print('Bot is ready for work, joining channels')
-    # join our target channel, if you want to join multiple, either call join for each individually
-    # or even better pass a list of channels as the argument
-    await ready_event.chat.join_room("2beerMinimumRacing")
-    # you can do other bot initialization things in here
 
+class Bot(commands.Bot):
 
-# this will be called whenever a message in a channel was send by either the bot OR another user
-async def on_message(msg: ChatMessage):
-    print(f'in {msg.room.name}, {msg.user.name} said: {msg.text}')
-    # Pass this off to our handler to do queueing
-    # handle_message(msg.text, msg.user.name)
+    def __init__(self):
+        super().__init__(token=access_token, client_id=client_id, nick=BOT_NAME, prefix='!', initial_channels=[TWITCH_CHANNEL])
 
-async def on_joined(joined_event: JoinedEvent):
-    print("This MF joined up in some channels!")
-    print("This MF is in " + joined_event.room_name + " and my name is " + joined_event.user_name)
-    
-    await joined_event.chat.send_message(joined_event.room_name, "Locski deeeez nuts")
+    async def event_ready(self):
+        # Notify us when everything is ready!
+        # We are logged in and ready to chat and use commands...
+        print(f'Logged in as | {self.nick}')
+        print(f'User id is | {self.user_id}')
 
+        await self.connected_channels[0].send("2BeerBot has connected and is ready for NATMAR. Available commands: !race !entries. Mod commands: !startrace !clearentries")
 
-# this will be called whenever someone subscribes to a channel
-async def on_sub(sub: ChatSub):
-    print(f'New subscription in {sub.room.name}:\\n'
-          f'  Type: {sub.sub_plan}\\n'
-          f'  Message: {sub.sub_message}')
+    # Events don't need decorators when subclassing
+    async def event_message(self, message):
+        # Make sure there is a message author. And make sure it isn't the bot
+        if message.author is not None and message.author.name.lower() != BOT_NAME.lower() :
+            message_text = message.content
+            message_author = message.author.name
+            await handle_message(message_text, message_author, twitch_message=message)
 
-
-# this is where we set up the bot
-async def listen_to_twitch():
-    # set up twitch api instance and add user authentication with some scopes
-    twitch = await Twitch(client_id, client_secret)
-    auth = UserAuthenticator(twitch, USER_SCOPE)
-    token, refresh_token = await auth.authenticate()
-    await twitch.set_user_authentication(token, USER_SCOPE, refresh_token)
-
-    # create chat instance
-    chat = await Chat(twitch)
-
-    # register the handlers for the events you want
-
-    # listen to when the bot is done starting up and ready to join channels
-    chat.register_event(ChatEvent.READY, on_ready)
-    # listen for our bot joining a chat
-    chat.register_event(ChatEvent.JOINED, on_joined)
-    # listen to chat messages
-    chat.register_event(ChatEvent.MESSAGE, on_message)
-
-    # we are done with our setup, lets start this bot up!
-    chat.start()
-
-    # lets run till we press enter in the console
-    try:
-        input('press ENTER to stop\n')
-    finally:
-        # now we can close the chat bot and the twitch api client
-        chat.stop()
-        await twitch.close()
-
-
-asyncio.run(listen_to_twitch())
+bot = Bot()
+bot.run()
 
 # do_test()
