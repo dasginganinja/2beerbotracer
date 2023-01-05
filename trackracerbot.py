@@ -38,7 +38,7 @@ async def handle_message(message: str, author: str, twitch_message: TwitchMessag
     if twitch_message is not None and twitch_message.author is not None:
         is_mod = twitch_message.author.is_mod
 
-    if message.startswith("!race") or message.startswith("!enter") or message.startswith("!join"):
+    if message.lower().startswith("!race") or message.lower().startswith("!enter") or message.lower().startswith("!join"):
         if author in entry_queue:
             await print_everywhere("You have already entered, " + author + ". Nice try :)", twitch_message=twitch_message)
             return
@@ -51,18 +51,18 @@ async def handle_message(message: str, author: str, twitch_message: TwitchMessag
             await print_everywhere("The list is full. Races starting soon!", twitch_message=twitch_message)
         else:
             await print_everywhere("You have been added, " + author, twitch_message=twitch_message)
-    elif message.startswith("!startrace") and is_mod:
+    elif message.lower().startswith("!startrace") and is_mod:
         await print_everywhere("Starting race for " + ", ".join(itertools.islice(entry_queue,0,15)), twitch_message=twitch_message)
         # Remove the first MAX_ENTRIES from the queue
         for i in range(MAX_ENTRIES):
             if len(entry_queue) > 0:
                 racer = entry_queue.popleft()
                 
-    elif message.startswith("!clearentries") and is_mod:
+    elif message.lower().startswith("!clearentries") and is_mod:
         # Clear the queue
         entry_queue.clear()
         await print_everywhere("All entries have been cleared.", twitch_message=twitch_message)
-    elif message.startswith("!entries"):
+    elif message.lower().startswith("!entries"):
         # Print the queue
         await print_everywhere("Race Entries: " + ", ".join(entry_queue), twitch_message=twitch_message)
 
