@@ -1,10 +1,18 @@
 {
     "configurations": [
         {
-            "name": "Python: File",
+            "name": "Twitch Track Racer Bot",
             "type": "python",
             "request": "launch",
-            "program": "${file}",
+            "program": "trackracerbot.py",
+            "justMyCode": true,
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "Testing",
+            "type": "python",
+            "request": "launch",
+            "program": "testing.py",
             "justMyCode": true,
             "console": "integratedTerminal"
         }
