@@ -2,7 +2,8 @@ from dotenv import load_dotenv
 import os
 import collections
 import itertools
-import threading
+# import threading
+# import asyncio
 
 from twitchio.ext import commands
 from twitchio.message import Message as TwitchMessage
@@ -38,7 +39,12 @@ async def handle_message(message: str, author: str, twitch_message: TwitchMessag
     if twitch_message is not None and twitch_message.author is not None:
         is_mod = twitch_message.author.is_mod
 
-    if message.lower().startswith("!race") or message.lower().startswith("!enter") or message.lower().startswith("!join"):
+    if message.lower().startswith("!commands"):
+        commands_message = "Available commands: !join !entries"
+        if is_mod:
+            commands_message += " // Mod Commands: !startrace !clearentries"
+        await print_everywhere(commands_message, twitch_message=twitch_message)
+    if message.lower().startswith("!race") or message.lower().startswith("!enter") or message.lower().startswith("!join") or message.count("artmannJudy"):
         if author in entry_queue:
             await print_everywhere("You have already entered, " + author + ". Nice try :)", twitch_message=twitch_message)
             return
@@ -116,7 +122,7 @@ class Bot(commands.Bot):
         print(f'Logged in as | {self.nick}')
         print(f'User id is | {self.user_id}')
 
-        await self.connected_channels[0].send("2BeerBot has connected and is ready for NATMAR. Available commands: !race !entries. Mod commands: !startrace !clearentries")
+        # await self.connected_channels[0].send("2BeerBot has connected and is ready for NATMAR. !commands for more info")
 
     # Events don't need decorators when subclassing
     async def event_message(self, message):
@@ -126,7 +132,18 @@ class Bot(commands.Bot):
             message_author = message.author.name
             await handle_message(message_text, message_author, twitch_message=message)
 
-bot = Bot()
-bot.run()
+# def listen_to_twitch():
+#     bot = Bot()
+#     bot.run()
+
+# Create a Twitch Bot
+twitch_bot = Bot()
+twitch_bot.run()
+
+# Start running the bots
+# loop = asyncio.get_event_loop()
+# loop.create_task(twitch_bot.run())
+# loop.run_forever()
+
 
 # do_test()
