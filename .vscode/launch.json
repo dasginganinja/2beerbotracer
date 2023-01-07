@@ -9,7 +9,7 @@
             "console": "integratedTerminal"
         },
         {
-            "name": "Testing",
+            "name": "Youtube Testing",
             "type": "python",
             "request": "launch",
             "program": "testing.py",
