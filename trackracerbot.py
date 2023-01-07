@@ -3,14 +3,18 @@ import os
 import collections
 import itertools
 # import threading
-# import asyncio
+import asyncio
 
 from twitchio.ext import commands
 from twitchio.message import Message as TwitchMessage
 
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
+import time
+import datetime
 import google
+from dateutil.parser import parse
+import pytz
 
 # Load the values from the .env file
 load_dotenv()
@@ -23,7 +27,7 @@ refresh_token = os.getenv('TWITCH_REFRESH_TOKEN')
 TWITCH_CHANNEL = os.getenv('TWITCH_CHANNEL')
 BOT_NAME = os.getenv('TWITCH_BOT_NAME')
 api_key = os.getenv('YOUTUBE_API_KEY')
-live_chat_id = os.getenv('YOUTUBE_LIVE_CHAT_ID')
+youtube_video_id = os.getenv('YOUTUBE_LIVE_VIDEO_ID')
 entry_file = os.getenv('ENTRY_FILE')
 
 # Create a queue for storing the usernames
@@ -46,7 +50,7 @@ def clear_queue():
     bang_out_queue_to_file(entry_file_abs)
 
 # Handle incoming chat messages (passed data from twitch or Youtube)
-async def handle_message(message: str, author: str, twitch_message: TwitchMessage = None):
+async def handle_message(message: str, author: str, twitch_message: TwitchMessage = None, youtube_message = None):
     # Check if we have a race entry
     # !race !enter !join - add to queue
     # !startrace - remove the first MAX_ENTRIES from queue
@@ -144,8 +148,6 @@ def do_test():
     # There should be one entry left
     handle_message("!entries", "ArtMann")
 
-# this will be called when the event READY is triggered, which will be on bot start
-
 class Bot(commands.Bot):
 
     def __init__(self):
@@ -181,18 +183,99 @@ if os.path.exists(entry_file_abs):
                 # Add the line to the deque
                 entry_queue.append(line)
 
-# def listen_to_twitch():
-#     bot = Bot()
-#     bot.run()
+def listen_to_twitch():
+    bot = Bot()
+    bot.run()
 
-# Create a Twitch Bot
-twitch_bot = Bot()
-twitch_bot.run()
 
-# Start running the bots
-# loop = asyncio.get_event_loop()
-# loop.create_task(twitch_bot.run())
-# loop.run_forever()
+async def listen_to_youtube():
+    # Set the publishedAfter parameter to the current time
+    published_after = datetime.datetime.utcnow().replace(tzinfo=pytz.UTC)
+
+    # Set up the YouTube API Service
+    youtube = build('youtube', 'v3', developerKey=api_key)
+
+    # Get actual video id from Youtube API for a given Youtube video string
+    request = youtube.videos().list(
+        part="liveStreamingDetails",
+        id=youtube_video_id
+    )
+    response = request.execute()
+
+    active_live_chat_id=""
+    if "items" in response:
+        video = response["items"][0]
+        liveStreamingDetails = video["liveStreamingDetails"]
+        active_live_chat_id = liveStreamingDetails.get("activeLiveChatId", "")
+    else:
+        print("There was an issue getting the live chat ID")
+
+    # Start listening for messages since we have the actual chat ID the API needs
+    if active_live_chat_id == "":
+        return
+
+    print("Active chat ID: " + active_live_chat_id)
+
+    request = youtube.liveChatMessages().list(
+        liveChatId=active_live_chat_id,
+        part="snippet,authorDetails",
+        pageToken="", #Start with an empty page token to get the first page of results
+    )
+    
+    # Poll the response and retrieve new messages
+    while True:
+        # print("Executing a response...")
+        response = request.execute()
+
+        # Print out the live chat messages
+        if "items" in response:
+            for message in response["items"]:
+                message_time = parse(message['snippet']['publishedAt'])
+                if (published_after > message_time):
+                    continue
+                snippet = message["snippet"]
+                text = snippet["textMessageDetails"]["messageText"]
+                author_details = message["authorDetails"]
+                display_name = author_details["displayName"]
+                print(f"{display_name}: {text}")
+                await handle_message(text,display_name, youtube_message=message)
+
+        # Check if there are more pages of results
+        if "nextPageToken" in response:
+            # Set the page token for the next request
+            request = youtube.liveChatMessages().list(
+                liveChatId=active_live_chat_id,
+                part="snippet,authorDetails",
+                pageToken=response["nextPageToken"],
+            )
+        else:
+            # No more pages of results, exit the loop
+            break
+
+        # Give youtube a break. It hates being pounded
+        time.sleep(10)
+
+def test_writing_to_youtube():
+    youtube = build('youtube', 'v3', developerKey=api_key)
+    active_live_chat_id = "Cg0KC2UtVXMwalBWTVVZKicKGFVDRU5BZGE1WlJla2docjlqM0dFX3Z1dxILZS1VczBqUFZNVVk"
+    request = youtube.liveChatMessages().insert(
+        part="snippet",
+        body={
+            "snippet": {
+                "liveChatId": active_live_chat_id,
+                "type": "textMessageEvent",
+                "textMessageDetails": {
+                    "messageText": "Hello, world!"
+                }
+            }
+        }
+    )
+    response = request.execute()
+
+    # Print the response
+    print(response)
 
 
 # do_test()
+# asyncio.run(listen_to_youtube())
+asyncio.run(listen_to_twitch())
