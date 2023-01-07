@@ -65,7 +65,7 @@ async def handle_message(message: str, author: str, twitch_message: TwitchMessag
 
     if message.lower().startswith("!race") or message.lower().startswith("!play") or message.lower().startswith("!enter") or message.lower().startswith("!join") or message.count("artmannJudy") or message.count("x100pr3Mychair") or message.count("x2beerShrek") or message.count("avoidr3Hotdogman") or message.count("spacec122GoodVibes") or message.count("artmannNatmar"):
         if author in entry_queue:
-            await print_everywhere("You have already entered " + author + ". Nice try :) artmannCheerup", twitch_message=twitch_message)
+            await print_everywhere("You have already entered " + author + ". Nice try :)", twitch_message=twitch_message)
             return
 
         # Add to queue, or print full message
