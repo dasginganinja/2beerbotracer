@@ -159,7 +159,7 @@ class Bot(commands.Bot):
         print(f'Logged in as | {self.nick}')
         print(f'User id is | {self.user_id}')
 
-        # await self.connected_channels[0].send("2BeerBot has connected and is ready for NATMAR. !commands for more info")
+        await self.connected_channels[0].send("2BeerBot has connected and is ready for NATMAR. !commands for more info")
 
     # Events don't need decorators when subclassing
     async def event_message(self, message):
@@ -253,7 +253,7 @@ async def listen_to_youtube():
             break
 
         # Give youtube a break. It hates being pounded
-        time.sleep(10)
+        time.sleep(15)
 
 def test_writing_to_youtube():
     youtube = build('youtube', 'v3', developerKey=api_key)
