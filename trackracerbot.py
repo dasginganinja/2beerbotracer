@@ -2,19 +2,19 @@ from dotenv import load_dotenv
 import os
 import collections
 import itertools
-# import threading
+import threading
 import asyncio
 
 from twitchio.ext import commands
 from twitchio.message import Message as TwitchMessage
 
 from googleapiclient.discovery import build
-from googleapiclient.errors import HttpError
-import time
 import datetime
-import google
 from dateutil.parser import parse
 import pytz
+
+import websockets
+import json
 
 # Load the values from the .env file
 load_dotenv()
@@ -116,37 +116,11 @@ async def print_everywhere(logmessage: str, twitch_message: TwitchMessage = None
     # Print to local console
     print(logmessage)
 
-    # TODO: Print this message in Twitch chat
+    # Print this message in Twitch chat
     if twitch_message is not None:
         await twitch_message.channel.send(logmessage)
 
-    # TODO: Print this message in YT chat
-
-# Testing of the handle message function is essential to make sure this works as expected.
-def do_test():
-    # Testing Inputs to simulate chat
-    handle_message("hello fuck boiii", "2beer")
-
-    # Test Entries
-    handle_message("!race", "2beer")
-    handle_message("!race", "AvoidRalph")
-    handle_message("!race", "2beer")
-    handle_message("!race", "AvoidRalph")
-    handle_message("!join", "ArtMann")
-    handle_message("!join", "RubbingIsRacing")
-    handle_message("!enter", "SuperBee2315")
-    handle_message("!entries", "2beer")
-    handle_message("!startrace", "ArtMann")
-
-    # Simulate 2nd race
-    handle_message("!race", "2beer")
-    for i in range(MAX_ENTRIES):
-        handle_message("!join", "testracer" + str(i))
-    handle_message("!entries", "ArtMann")
-    handle_message("!startrace", "ArtMann")
-
-    # There should be one entry left
-    handle_message("!entries", "ArtMann")
+    # TODO: Print this message in YT chat (can't -- api)
 
 class Bot(commands.Bot):
 
@@ -184,8 +158,16 @@ if os.path.exists(entry_file_abs):
                 entry_queue.append(line)
 
 def listen_to_twitch():
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
     bot = Bot()
     bot.run()
+
+    loop.run_until_complete(bot.run)
+    loop.run_forever() # this is missing
+    loop.close()
+
 
 
 async def listen_to_youtube():
@@ -253,29 +235,56 @@ async def listen_to_youtube():
             break
 
         # Give youtube a break. It hates being pounded
-        time.sleep(10)
+        await asyncio.sleep(15)
 
-def test_writing_to_youtube():
-    youtube = build('youtube', 'v3', developerKey=api_key)
-    active_live_chat_id = "Cg0KC2UtVXMwalBWTVVZKicKGFVDRU5BZGE1WlJla2docjlqM0dFX3Z1dxILZS1VczBqUFZNVVk"
-    request = youtube.liveChatMessages().insert(
-        part="snippet",
-        body={
-            "snippet": {
-                "liveChatId": active_live_chat_id,
-                "type": "textMessageEvent",
-                "textMessageDetails": {
-                    "messageText": "Hello, world!"
-                }
-            }
-        }
-    )
-    response = request.execute()
+def obj_dict(obj):
+    return obj.__dict__
 
-    # Print the response
-    print(response)
+def entries_json():
+    # data to be saved to the CSV file
+        data = []
+        count = 1
 
+        # Loop through entries
+        for element in entry_queue:
+            number = count
+            # Custom number for 29 per Art's request
+            if number == 29:
+                number = 69
+            name = element
 
-# do_test()
-# asyncio.run(listen_to_youtube())
-asyncio.run(listen_to_twitch())
+            # Add to data list
+            data.append({'number': number, 'name': name})
+            count += 1
+
+        # Generate the json string
+        json_string = json.dumps(data, default=obj_dict)
+        return json_string
+
+async def socket_comms(websocket, path):
+    # LOOP THE RESPONSES so we keep it open
+    async for msg in websocket:
+        # Generate JSON response
+        json_string = entries_json()
+
+        # I don't care what you send me you get a queue
+        await websocket.send(json_string)
+
+def setup_websocket():
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
+    # connect to the WebSocket server
+    ws_server = websockets.serve(socket_comms, host=None, port=5678)
+
+    loop.run_until_complete(ws_server)
+    loop.run_forever() # this is missing
+    loop.close()
+
+ws_server_thread = threading.Thread(target=setup_websocket, daemon=True)
+ws_server_thread.start()
+
+twitch_thread = threading.Thread(target=listen_to_twitch, daemon=True)
+twitch_thread.start()
+
+asyncio.run(listen_to_youtube())
