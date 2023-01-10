@@ -12,9 +12,11 @@ from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 import time
 import datetime
-import google
 from dateutil.parser import parse
 import pytz
+
+import websockets
+import json
 
 # Load the values from the .env file
 load_dotenv()
@@ -159,7 +161,7 @@ class Bot(commands.Bot):
         print(f'Logged in as | {self.nick}')
         print(f'User id is | {self.user_id}')
 
-        await self.connected_channels[0].send("2BeerBot has connected and is ready for NATMAR. !commands for more info")
+        # await self.connected_channels[0].send("2BeerBot has connected and is ready for NATMAR. !commands for more info")
 
     # Events don't need decorators when subclassing
     async def event_message(self, message):
@@ -275,7 +277,48 @@ def test_writing_to_youtube():
     # Print the response
     print(response)
 
+def obj_dict(obj):
+    return obj.__dict__
+
+def entries_json():
+    # data to be saved to the CSV file
+        data = []
+        count = 1
+
+        # Loop through entries
+        for element in entry_queue:
+            number = count
+            # Custom number for 29 per Art's request
+            if number == 29:
+                number = 69
+            name = element
+
+            # Add to data list
+            data.append({'number': number, 'name': name})
+            count += 1
+
+        # Generate the json string
+        json_string = json.dumps(data, default=obj_dict)
+        return json_string
+
+async def socket_comms(websocket, path):
+    # LOOP THE RESPONSES so we keep it open
+    async for msg in websocket:
+        # Generate JSON response
+        json_string = entries_json()
+
+        # I don't care what you send me you get a queue
+        await websocket.send(json_string)
+
+async def setup_websocket():
+    # connect to the WebSocket server
+    server = await websockets.serve(socket_comms, host=None, port=5678)
+
+    # run the server forever
+    await server.wait_closed()
+
 
 # do_test()
+# asyncio.run(setup_websocket())
 # asyncio.run(listen_to_youtube())
 asyncio.run(listen_to_twitch())
