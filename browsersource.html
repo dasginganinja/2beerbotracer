@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset="UTF-8">
+        <title>2BeerBotRacer</title>
+        <link rel="preconnect" href="https://fonts.googleapis.com">
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link href="https://fonts.googleapis.com/css2?family=Racing+Sans+One&display=swap" rel="stylesheet">        
+        <style type="text/css">
+            body {
+                font-size: 1rem;
+                
+                font-family: 'Racing Sans One', cursive;
+            }
+            table { border-collapse: collapse; }
+            tr { border: 1px solid #ccc; }
+            th, td { padding: 2px 5px 2px 5px; font-size: 1.5rem; }
+            td:first-child { 
+                border-right: 1px solid #dfdfdf;
+            }
+            th { display: none; }
+            tr:nth-child(even) { background-color: #f2f2f2; }
+        </style>
+        <style>
+            @import url('https://fonts.googleapis.com/css2?family=Racing+Sans+One&display=swap');
+        </style> 
+        <script type="text/javascript">
+            function getCells(data, type) {
+                cells="";
+                for (const property in data) {
+                    cells += `<${type}>${data[property]}</${type}>`;
+                }
+                return cells;
+            }
+
+            function createBody(data) {
+                return data.map(row => `<tr>${getCells(row, 'td')}</tr>`).join('');
+            }
+
+            function createTable(data) {
+
+                // Destructure the headings (first row) from
+                // all the rows
+                const [headings, ...rows] = data;
+
+                // Return some HTML that uses `getCells` to create
+                // some headings, but also to create the rows
+                // in the tbody.
+                return `
+                        <thead>${getCells(headings, 'th')}</thead>
+                        <tbody>${createBody(rows)}</tbody>
+                `;
+            }
+
+            function fillTable(data) {
+                if (Array.isArray(data)) {
+                    data.unshift({"number": "number", "name": "name"});
+                    let tablerender = createTable(data);
+                    document.getElementById("entries").innerHTML = tablerender;
+                    // console.log("it works?");
+                }
+            }
+
+
+            const socket = new WebSocket("ws://localhost:5678");
+
+            function refresh_queue() {
+                socket.send("send_queue");
+            }
+
+            // Send a message to the server to trigger the queue send
+            socket.onopen = function() {
+                refresh_queue();
+                window.setInterval(refresh_queue, 2000);
+            };
+
+            // Receive the queue from the server
+            socket.onmessage = function(event) {
+                jsondata = JSON.parse(event.data);
+                // console.log(jsondata);
+                fillTable(jsondata);
+            };
+        </script>
+    </head>
+    <body>
+        <table id="entries"></table>
+    </body>
+</html>
