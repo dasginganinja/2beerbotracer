@@ -5,21 +5,11 @@
         <title>2BeerBotRacer</title>
         <link rel="preconnect" href="https://fonts.googleapis.com">
         <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-        <link href="https://fonts.googleapis.com/css2?family=Racing+Sans+One&display=swap" rel="stylesheet">        
+        <link href="https://fonts.googleapis.com/css2?family=Roboto+Condensed:wght@400&display=swap" rel="stylesheet">
+        <link href="browsersource.css" rel="stylesheet">
+        <!-- <meta http-equiv="refresh" content="2"> -->
         <style type="text/css">
-            body {
-                font-size: 1rem;
-                
-                font-family: 'Racing Sans One', cursive;
-            }
-            table { border-collapse: collapse; }
-            tr { border: 1px solid #ccc; }
-            th, td { padding: 2px 5px 2px 5px; font-size: 1.5rem; }
-            td:first-child { 
-                border-right: 1px solid #dfdfdf;
-            }
-            th { display: none; }
-            tr:nth-child(even) { background-color: #f2f2f2; }
+            
         </style>
         <style>
             @import url('https://fonts.googleapis.com/css2?family=Racing+Sans+One&display=swap');
@@ -47,7 +37,7 @@
                 // some headings, but also to create the rows
                 // in the tbody.
                 return `
-                        <thead>${getCells(headings, 'th')}</thead>
+                        <thead><th colspan="2"><img class="img--logo" src="natmar.png" alt=""></th></thead>
                         <tbody>${createBody(rows)}</tbody>
                 `;
             }
@@ -83,6 +73,8 @@
         </script>
     </head>
     <body>
-        <table id="entries"></table>
+        <div class="wrap">
+            <table id="entries"></table>
+        </div>
     </body>
 </html>
