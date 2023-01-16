@@ -206,7 +206,7 @@ async def listen_to_youtube():
     
     # Poll the response and retrieve new messages
     while True:
-        # print("Executing a response...")
+        print("Executing a response...")
         response = request.execute()
 
         # Print out the live chat messages
@@ -235,7 +235,7 @@ async def listen_to_youtube():
             break
 
         # Give youtube a break. It hates being pounded
-        await asyncio.sleep(15)
+        await asyncio.sleep(20)
 
 def obj_dict(obj):
     return obj.__dict__
@@ -275,7 +275,7 @@ def setup_websocket():
     asyncio.set_event_loop(loop)
 
     # connect to the WebSocket server
-    ws_server = websockets.serve(socket_comms, host=None, port=5678)
+    ws_server = websockets.serve(socket_comms, host=None, port=64209)
 
     loop.run_until_complete(ws_server)
     loop.run_forever() # this is missing
@@ -288,3 +288,5 @@ twitch_thread = threading.Thread(target=listen_to_twitch, daemon=True)
 twitch_thread.start()
 
 asyncio.run(listen_to_youtube())
+
+twitch_thread.join()
