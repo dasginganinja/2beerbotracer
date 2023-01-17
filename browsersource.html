@@ -15,6 +15,8 @@
             @import url('https://fonts.googleapis.com/css2?family=Racing+Sans+One&display=swap');
         </style> 
         <script type="text/javascript">
+            var latest_winner = "";
+
             function getCells(data, type) {
                 cells="";
                 for (const property in data) {
@@ -58,10 +60,14 @@
                 socket.send("send_queue");
             }
 
+            function marqueeText() {
+                return "!race to join // Latest Winner: " + latest_winner;
+            }
+
             // Send a message to the server to trigger the queue send
             socket.onopen = function() {
                 refresh_queue();
-                window.setInterval(refresh_queue, 2000);
+                // window.setInterval(refresh_queue, 2000);
             };
 
             // Receive the queue from the server

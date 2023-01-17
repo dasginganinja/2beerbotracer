@@ -25,10 +25,13 @@ client_secret = os.getenv('TWITCH_CLIENT_SECRET')
 access_token = os.getenv('TWITCH_ACCESS_TOKEN')
 refresh_token = os.getenv('TWITCH_REFRESH_TOKEN')
 TWITCH_CHANNEL = os.getenv('TWITCH_CHANNEL')
+# TWITCH_CHANNEL = "2BeerMinimumRacing"
 BOT_NAME = os.getenv('TWITCH_BOT_NAME')
 api_key = os.getenv('YOUTUBE_API_KEY')
 youtube_video_id = os.getenv('YOUTUBE_LIVE_VIDEO_ID')
 entry_file = os.getenv('ENTRY_FILE')
+# winners_file = "winners.txt"
+latest_winner = "ArtMannFan"
 
 # Create a queue for storing the usernames
 entry_queue = collections.deque()
@@ -57,6 +60,8 @@ async def handle_message(message: str, author: str, twitch_message: TwitchMessag
     # !clearentries - clear list of entries
     # !entries - print entries in race
 
+    global latest_winner
+
     is_mod = False
     if twitch_message is not None and twitch_message.author is not None:
         is_mod = twitch_message.author.is_mod
@@ -66,6 +71,16 @@ async def handle_message(message: str, author: str, twitch_message: TwitchMessag
         if is_mod:
             commands_message += " // Mod Commands: !start !clearentries"
         await print_everywhere(commands_message, twitch_message=twitch_message)
+
+    if message.lower().startswith("!lastwinner"):
+        await print_everywhere("The last winner is @" + latest_winner, twitch_message=twitch_message)
+
+    if message.lower().startswith("!winner"):
+        if is_mod:
+            test = message.removeprefix("!winner ")
+            test = test.removeprefix("@")
+            if test.strip() != "":
+                latest_winner = test
 
     if message.lower().startswith("!race") or message.lower().startswith("!play") or message.lower().startswith("!enter") or message.lower().startswith("!join") or message.count("artmannJudy") or message.count("x100pr3Mychair") or message.count("x2beerShrek") or message.count("avoidr3Hotdogman") or message.count("spacec122GoodVibes") or message.count("artmannNatmar"):
         if author in entry_queue:
@@ -264,18 +279,24 @@ def entries_json():
 async def socket_comms(websocket, path):
     # LOOP THE RESPONSES so we keep it open
     async for msg in websocket:
-        # Generate JSON response
-        json_string = entries_json()
+        if msg == "send_queue":
+            # Generate JSON response
+            json_string = entries_json()
 
-        # I don't care what you send me you get a queue
-        await websocket.send(json_string)
+            # I don't care what you send me you get a queue
+            await websocket.send(json_string)
+        elif msg == "latest_winner":
+            global latest_winner
+            await websocket.send(latest_winner)
+        else:
+            await websocket.send("{}")
 
 def setup_websocket():
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
 
     # connect to the WebSocket server
-    ws_server = websockets.serve(socket_comms, host=None, port=64209)
+    ws_server = websockets.serve(socket_comms, host=None, port=5678)
 
     loop.run_until_complete(ws_server)
     loop.run_forever() # this is missing
