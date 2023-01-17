@@ -140,7 +140,7 @@ class Bot(commands.Bot):
         # Make sure there is a message author. And make sure it isn't the bot
         if message.author is not None and message.author.name.lower() != BOT_NAME.lower() :
             message_text = message.content
-            message_author = message.author.name
+            message_author = message.author.display_name
             await handle_message(message_text, message_author, twitch_message=message)
 
 # Restore the queue on restart (because we like nice things)
