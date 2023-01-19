@@ -25,6 +25,7 @@ client_secret = os.getenv('TWITCH_CLIENT_SECRET')
 access_token = os.getenv('TWITCH_ACCESS_TOKEN')
 refresh_token = os.getenv('TWITCH_REFRESH_TOKEN')
 TWITCH_CHANNEL = os.getenv('TWITCH_CHANNEL')
+# TWITCH_CHANNEL = "2BeerMinimumRacing"
 BOT_NAME = os.getenv('TWITCH_BOT_NAME')
 api_key = os.getenv('YOUTUBE_API_KEY')
 youtube_video_id = os.getenv('YOUTUBE_LIVE_VIDEO_ID')
@@ -264,11 +265,18 @@ def entries_json():
 async def socket_comms(websocket, path):
     # LOOP THE RESPONSES so we keep it open
     async for msg in websocket:
-        # Generate JSON response
-        json_string = entries_json()
-
-        # I don't care what you send me you get a queue
-        await websocket.send(json_string)
+        socket_data = "{}"
+        if msg == "send_queue":
+            # Generate JSON response
+            socket_data = entries_json()
+        elif msg == "latest_winner":
+            global latest_winner
+            socket_data = latest_winner
+        
+        try:
+            await websocket.send(socket_data)
+        except websockets.exceptions.ConnectionClosedError:
+            print("Web Socket connection closed")
 
 def setup_websocket():
     loop = asyncio.new_event_loop()
