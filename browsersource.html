@@ -6,14 +6,56 @@
         <link rel="preconnect" href="https://fonts.googleapis.com">
         <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
         <link href="https://fonts.googleapis.com/css2?family=Abel&display=swap" rel="stylesheet">
-        <link href="browsersource.css" rel="stylesheet">
         <!-- <meta http-equiv="refresh" content="2"> -->
         <style type="text/css">
-            
+            body {
+                font-size: 1rem;
+                font-family: 'Abel', sans-serif;
+                font-weight: 400;
+            }
+
+            table { border-collapse: collapse; }
+            tr { 
+                border: 1px solid #ccc; 
+            }
+            th, td { 
+                padding: 2px 5px 2px 5px;
+                font-size: 1.4rem;
+                background-color: black;
+                color: white;
+            }
+            td:first-child { 
+                border-right: 1px solid #dfdfdf;
+                text-align: center;
+            }
+            td + td {
+                padding-left: 15px;    
+                max-width: 187px;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+            }
+
+            img { 
+                max-width: 100%;
+                height: auto;
+            }
+            .img--logo {
+                max-width: 300px;
+                margin-bottom: -7px;
+            }
+
+            #errors {
+                background: orange;
+                color: black;
+                font-weight: 700;
+                max-width: 312px;
+            }
+            #errors p {
+                padding: 10px;
+                margin: 0;
+            }
         </style>
-        <style>
-            @import url('https://fonts.googleapis.com/css2?family=Racing+Sans+One&display=swap');
-        </style> 
         <script type="text/javascript">
             function getCells(data, type) {
                 cells="";
@@ -50,31 +92,62 @@
                     // console.log("it works?");
                 }
             }
-
-
-            const socket = new WebSocket("ws://localhost:5678");
-
-            function refresh_queue() {
-                socket.send("send_queue");
+            
+            function setErrorMessage(message) {
+                dom_message = "";
+                if (message != "") {
+                    console.log(message);
+                    dom_message = "<p>" + message + "</p>";
+                }
+                
+                document.getElementById("errors").innerHTML = dom_message;
             }
 
-            // Send a message to the server to trigger the queue send
-            socket.onopen = function() {
-                refresh_queue();
-                window.setInterval(refresh_queue, 2000);
-            };
+            function generateWS() {
+                ws = new WebSocket("ws://localhost:5678");
+                
+                // Send a message to the server to trigger the queue send
+                ws.onopen = function(event) {
+                    setErrorMessage("");
+                    refresh_queue();
+                    window.setInterval(refresh_queue, 2000);
+                };
 
-            // Receive the queue from the server
-            socket.onmessage = function(event) {
-                jsondata = JSON.parse(event.data);
-                // console.log(jsondata);
-                fillTable(jsondata);
-            };
+                ws.onclose = function(event) {
+                    setErrorMessage('Connection to NATMAR bot is <em>inactive</em>.<br />Pick up the bat phone and call 2beer.');
+                    setTimeout(generateWS, 5000);
+                };
+
+                ws.onerror = function(event) {
+                    setErrorMessage(event.data);
+                }
+
+                // Receive the queue from the server
+                ws.onmessage = function(event) {
+                    jsondata = JSON.parse(event.data);
+                    // console.log(jsondata);
+                    fillTable(jsondata);
+                };
+
+                return ws;
+            }
+
+            function refresh_queue() {
+                if (ws != null && ws.readyState == WebSocket.OPEN) {
+                    ws.send("send_queue");
+                }
+            }
+
+            
+            let ws =  null;
+            generateWS();
+
         </script>
     </head>
     <body>
         <div class="wrap">
             <table id="entries"></table>
+            <div id="errors"><p>Connection to NATMAR bot is <em>inactive</em>.<br />Pick up the bat phone and call 2beer.</p></div>
         </div>
     </body>
 </html>
