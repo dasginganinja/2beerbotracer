@@ -92,6 +92,7 @@ async def handle_message(message: str, author: str, twitch_message: TwitchMessag
     elif message.lower().startswith("!clearentries") and is_mod:
         # Clear the queue
         clear_queue()
+        entry_queue.append("ArtMann")
         await print_everywhere("All entries have been cleared.", twitch_message=twitch_message)
 
     elif message.lower().startswith("!entries"):
