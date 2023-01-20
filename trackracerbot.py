@@ -88,8 +88,6 @@ async def handle_message(message: str, author: str, twitch_message: TwitchMessag
 
     elif message.lower().startswith("!start") and is_mod:
         await print_everywhere("Starting for " + ", ".join(itertools.islice(entry_queue,0,MAX_ENTRIES)), twitch_message=twitch_message)
-        # Clear the queue
-        clear_queue()
                 
     elif message.lower().startswith("!clearentries") and is_mod:
         # Clear the queue
