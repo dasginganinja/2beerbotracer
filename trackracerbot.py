@@ -15,6 +15,7 @@ import pytz
 
 import websockets
 import json
+import re
 
 # Load the values from the .env file
 load_dotenv()
@@ -44,6 +45,15 @@ entry_file_abs = os.path.abspath(entry_file)
 
 # Set maximum number of entries
 MAX_ENTRIES = 30
+
+# Message queue for Twitch chat to handle rate limiting
+# Will be initialized when Bot is ready (needs event loop)
+twitch_message_queue = None
+twitch_channel_ref = None  # Will be set when bot is ready
+
+# Rate limiting: Twitch allows ~20 messages per 30 seconds for regular users
+# We'll be conservative and send 1 message per 1.5 seconds (20 per 30s)
+MESSAGE_RATE_LIMIT = 1.5  # seconds between messages
 
 def clear_queue():
     # Clear the queue
@@ -117,9 +127,27 @@ async def print_everywhere(logmessage: str, twitch_message: TwitchMessage = None
     # Print to local console
     print(logmessage)
 
-    # Print this message in Twitch chat
+    # Queue message for Twitch chat instead of sending immediately
+    # This prevents rate limit errors
+    global twitch_message_queue, twitch_channel_ref
+    
     if twitch_message is not None:
-        await twitch_message.channel.send(logmessage)
+        # Store channel reference for later use
+        if twitch_channel_ref is None:
+            twitch_channel_ref = twitch_message.channel
+        
+        # Add message to queue if it's initialized
+        if twitch_message_queue is not None:
+            await twitch_message_queue.put(logmessage)
+        else:
+            # Fallback: try to send directly if queue isn't ready yet
+            try:
+                await twitch_message.channel.send(logmessage)
+            except Exception as e:
+                print(f"Could not send message (queue not ready): {e}")
+    elif twitch_channel_ref is not None and twitch_message_queue is not None:
+        # We have a channel reference but no message object (e.g., from YouTube)
+        await twitch_message_queue.put(logmessage)
 
     # TODO: Print this message in YT chat (can't -- api)
 
@@ -127,14 +155,96 @@ class Bot(commands.Bot):
 
     def __init__(self):
         super().__init__(token=access_token, client_id=client_id, nick=BOT_NAME, prefix='!', initial_channels=[TWITCH_CHANNEL])
+        self._message_processor_task = None
 
     async def event_ready(self):
         # Notify us when everything is ready!
         # We are logged in and ready to chat and use commands...
         print(f'Logged in as | {self.nick}')
         print(f'User id is | {self.user_id}')
+        
+        # Initialize message queue (needs event loop to exist)
+        global twitch_message_queue, twitch_channel_ref
+        if twitch_message_queue is None:
+            twitch_message_queue = asyncio.Queue()
+            print('Message queue initialized')
+        
+        # Store channel reference for message queue
+        if self.connected_channels:
+            twitch_channel_ref = self.connected_channels[0]
+            print(f'Channel reference stored: {twitch_channel_ref.name}')
+        
+        # Start the message processor task
+        self._message_processor_task = asyncio.create_task(self._process_message_queue())
+        print('Message queue processor started')
 
         # await self.connected_channels[0].send("2BeerBot has connected and is ready for NATMAR. !commands for more info")
+
+    async def _process_message_queue(self):
+        """Background task that processes queued messages respecting Twitch rate limits."""
+        from twitchio.errors import IRCCooldownError
+        
+        global twitch_message_queue
+        
+        while True:
+            try:
+                # Wait for a message in the queue
+                if twitch_message_queue is None:
+                    await asyncio.sleep(0.1)
+                    continue
+                    
+                message = await twitch_message_queue.get()
+                
+                if twitch_channel_ref is None:
+                    # Channel not ready yet, wait a bit and put message back
+                    await asyncio.sleep(0.5)
+                    await twitch_message_queue.put(message)
+                    continue
+                
+                # Try to send the message
+                retry_count = 0
+                max_retries = 3
+                
+                while retry_count < max_retries:
+                    try:
+                        await twitch_channel_ref.send(message)
+                        # Success! Wait for rate limit before processing next message
+                        await asyncio.sleep(MESSAGE_RATE_LIMIT)
+                        break
+                    except IRCCooldownError as e:
+                        retry_count += 1
+                        # Extract cooldown time from error message if possible
+                        error_msg = str(e)
+                        cooldown_match = re.search(r'(\d+\.?\d*)s', error_msg)
+                        
+                        if cooldown_match:
+                            cooldown_time = float(cooldown_match.group(1))
+                            print(f"Rate limit hit. Waiting {cooldown_time}s before retry {retry_count}/{max_retries}")
+                            await asyncio.sleep(cooldown_time + 0.5)  # Add small buffer
+                        else:
+                            # Default wait time if we can't parse the error
+                            wait_time = MESSAGE_RATE_LIMIT * (retry_count + 1)
+                            print(f"Rate limit hit. Waiting {wait_time}s before retry {retry_count}/{max_retries}")
+                            await asyncio.sleep(wait_time)
+                        
+                        if retry_count >= max_retries:
+                            print(f"Failed to send message after {max_retries} retries: {message}")
+                            break
+                    except Exception as e:
+                        print(f"Error sending message to Twitch: {e}")
+                        # Wait a bit before trying next message
+                        await asyncio.sleep(MESSAGE_RATE_LIMIT)
+                        break
+                
+                # Mark task as done
+                twitch_message_queue.task_done()
+                
+            except asyncio.CancelledError:
+                print("Message queue processor cancelled")
+                break
+            except Exception as e:
+                print(f"Error in message queue processor: {e}")
+                await asyncio.sleep(1)
 
     # Events don't need decorators when subclassing
     async def event_message(self, message):
