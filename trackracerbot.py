@@ -61,6 +61,8 @@ async def handle_message(message: str, author: str, twitch_message: TwitchMessag
     is_mod = False
     if twitch_message is not None and twitch_message.author is not None:
         is_mod = twitch_message.author.is_mod
+    if youtube_message is not None and youtube_message["authorDetails"] is not None:
+        is_mod = youtube_message['authorDetails']['isChatOwner'] or youtube_message['authorDetails']['isChatModerator']
 
     if message.lower().startswith("!commands"):
         commands_message = "Available commands: !play !entries"
@@ -68,7 +70,7 @@ async def handle_message(message: str, author: str, twitch_message: TwitchMessag
             commands_message += " // Mod Commands: !start !clearentries"
         await print_everywhere(commands_message, twitch_message=twitch_message)
 
-    if message.lower().startswith("!race") or message.lower().startswith("!play") or message.lower().startswith("!enter") or message.lower().startswith("!join") or message.count("artmannJudy") or message.count("x100pr3Mychair") or message.count("x2beerShrek") or message.count("avoidr3Hotdogman") or message.count("spacec122GoodVibes") or message.count("artmannNatmar"):
+    if message.lower().startswith("!race") or message.lower().startswith("!play") or message.lower().startswith("!enter") or message.lower().startswith("!join") or message.count("artmannJudy") or message.count("x100pr3Hndoclap52") or message.count("x2beerShrek") or message.count("avoidr3Hotdogman") or message.count("spacec122GoodVibes") or message.count("artmannNatmar") or message.count("artmannOhyeah"):
         if author in entry_queue:
             await print_everywhere("You have already entered " + author + ". Nice try :)", twitch_message=twitch_message)
             return
@@ -92,7 +94,6 @@ async def handle_message(message: str, author: str, twitch_message: TwitchMessag
     elif message.lower().startswith("!clearentries") and is_mod:
         # Clear the queue
         clear_queue()
-        entry_queue.append("ArtMann")
         await print_everywhere("All entries have been cleared.", twitch_message=twitch_message)
 
     elif message.lower().startswith("!entries"):
@@ -235,7 +236,7 @@ async def listen_to_youtube():
             break
 
         # Give youtube a break. It hates being pounded
-        await asyncio.sleep(20)
+        await asyncio.sleep(30)
 
 def obj_dict(obj):
     return obj.__dict__
@@ -294,6 +295,6 @@ ws_server_thread.start()
 twitch_thread = threading.Thread(target=listen_to_twitch, daemon=True)
 twitch_thread.start()
 
-asyncio.run(listen_to_youtube())
+# asyncio.run(listen_to_youtube())
 
 twitch_thread.join()
