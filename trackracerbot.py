@@ -82,7 +82,7 @@ async def handle_message(message: str, author: str, twitch_message: TwitchMessag
 
     if message.lower().startswith("!race") or message.lower().startswith("!play") or message.lower().startswith("!enter") or message.lower().startswith("!join") or message.count("artmannJudy") or message.count("x100pr3Hndoclap52") or message.count("x2beerShrek") or message.count("avoidr3Hotdogman") or message.count("spacec122GoodVibes") or message.count("artmannNatmar") or message.count("artmannOhyeah"):
         if author in entry_queue:
-            await print_everywhere("You have already entered " + author + ". Nice try :)", twitch_message=twitch_message)
+            await print_everywhere("You have already entered, " + author + ". Nice try :)", twitch_message=twitch_message)
             return
 
         # Add to queue, or print full message
@@ -96,7 +96,7 @@ async def handle_message(message: str, author: str, twitch_message: TwitchMessag
 
             await print_everywhere("You have been added " + author, twitch_message=twitch_message)
         else:
-            await print_everywhere("The list is full. Better luck next race!", twitch_message=twitch_message)
+            await print_everywhere("The list is full, " + author + ". Better luck next race!", twitch_message=twitch_message)
 
     elif message.lower().startswith("!start") and is_mod:
         await print_everywhere("Starting for " + ", ".join(itertools.islice(entry_queue,0,MAX_ENTRIES)), twitch_message=twitch_message)
