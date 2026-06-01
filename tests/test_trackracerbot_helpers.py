@@ -1,6 +1,16 @@
 import trackracerbot
 
 
+class FakeAuthor:
+    def __init__(self, is_mod):
+        self.is_mod = is_mod
+
+
+class FakeTwitchMessage:
+    def __init__(self, author):
+        self.author = author
+
+
 def test_is_entry_message_accepts_existing_text_commands_case_insensitively():
     assert trackracerbot.is_entry_message("!race")
     assert trackracerbot.is_entry_message("!PLAY")
@@ -66,3 +76,30 @@ def test_classify_message_preserves_case_and_prefix_behavior():
     assert trackracerbot.classify_message("!PLAY please") == trackracerbot.COMMAND_ENTRY
     assert trackracerbot.classify_message("x100pr3Hndoclap52 extra words") == trackracerbot.COMMAND_ENTRY
     assert trackracerbot.classify_message("hello artmannJudy") == trackracerbot.COMMAND_UNKNOWN
+
+
+def test_is_moderator_message_source_detects_twitch_mods():
+    assert trackracerbot.is_moderator_message_source(
+        twitch_message=FakeTwitchMessage(FakeAuthor(True))
+    )
+    assert not trackracerbot.is_moderator_message_source(
+        twitch_message=FakeTwitchMessage(FakeAuthor(False))
+    )
+
+
+def test_is_moderator_message_source_handles_missing_twitch_author():
+    assert not trackracerbot.is_moderator_message_source(
+        twitch_message=FakeTwitchMessage(None)
+    )
+
+
+def test_is_moderator_message_source_preserves_youtube_owner_and_moderator_flags():
+    assert trackracerbot.is_moderator_message_source(
+        youtube_message={"authorDetails": {"isChatOwner": True, "isChatModerator": False}}
+    )
+    assert trackracerbot.is_moderator_message_source(
+        youtube_message={"authorDetails": {"isChatOwner": False, "isChatModerator": True}}
+    )
+    assert not trackracerbot.is_moderator_message_source(
+        youtube_message={"authorDetails": {"isChatOwner": False, "isChatModerator": False}}
+    )

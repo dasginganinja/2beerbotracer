@@ -114,6 +114,18 @@ def classify_message(message: str) -> str:
     return COMMAND_UNKNOWN
 
 
+def is_moderator_message_source(twitch_message: TwitchMessage = None, youtube_message=None) -> bool:
+    is_mod = False
+    if twitch_message is not None and twitch_message.author is not None:
+        is_mod = twitch_message.author.is_mod
+    if youtube_message is not None and youtube_message["authorDetails"] is not None:
+        is_mod = (
+            youtube_message["authorDetails"]["isChatOwner"]
+            or youtube_message["authorDetails"]["isChatModerator"]
+        )
+    return is_mod
+
+
 def clear_queue():
     # Clear the queue
     entry_queue.clear()
