@@ -55,6 +55,51 @@ twitch_channel_ref = None  # Will be set when bot is ready
 # We'll be conservative and send 1 message per 1.5 seconds (20 per 30s)
 MESSAGE_RATE_LIMIT = 1.5  # seconds between messages
 
+ENTRY_COMMANDS = ("!race", "!play", "!enter", "!join")
+ENTRY_EMOTE_PREFIXES = (
+    "artmannJudy",
+    "x100pr3Hndoclap52",
+    "x2beerShrek",
+    "avoidr3Hotdogman",
+    "spacec122GoodVibes",
+    "artmannNatmar",
+    "artmannOhyeah",
+)
+
+COMMAND_COMMANDS = "commands"
+COMMAND_ENTRY = "entry"
+COMMAND_START = "start"
+COMMAND_CLEAR_ENTRIES = "clear_entries"
+COMMAND_ENTRIES = "entries"
+COMMAND_UNKNOWN = "unknown"
+
+COMMANDS_COMMAND = "!commands"
+START_COMMAND = "!start"
+CLEAR_ENTRIES_COMMAND = "!clearentries"
+ENTRIES_COMMAND = "!entries"
+
+
+def is_entry_message(message: str) -> bool:
+    message_lower = message.lower()
+    return message_lower.startswith(ENTRY_COMMANDS) or message.startswith(ENTRY_EMOTE_PREFIXES)
+
+
+def is_commands_message(message: str) -> bool:
+    return message.lower().startswith(COMMANDS_COMMAND)
+
+
+def is_start_message(message: str) -> bool:
+    return message.lower().startswith(START_COMMAND)
+
+
+def is_clear_entries_message(message: str) -> bool:
+    return message.lower().startswith(CLEAR_ENTRIES_COMMAND)
+
+
+def is_entries_message(message: str) -> bool:
+    return message.lower().startswith(ENTRIES_COMMAND)
+
+
 def clear_queue():
     # Clear the queue
     entry_queue.clear()
@@ -80,7 +125,7 @@ async def handle_message(message: str, author: str, twitch_message: TwitchMessag
             commands_message += " // Mod Commands: !start !clearentries"
         await print_everywhere(commands_message, twitch_message=twitch_message)
 
-    if message.lower().startswith("!race") or message.lower().startswith("!play") or message.lower().startswith("!enter") or message.lower().startswith("!join") or message.count("artmannJudy") or message.count("x100pr3Hndoclap52") or message.count("x2beerShrek") or message.count("avoidr3Hotdogman") or message.count("spacec122GoodVibes") or message.count("artmannNatmar") or message.count("artmannOhyeah"):
+    if is_entry_message(message):
         if author in entry_queue:
             await print_everywhere("You have already entered, " + author + ". Nice try :)", twitch_message=twitch_message)
             return
@@ -399,12 +444,17 @@ def setup_websocket():
     loop.run_forever() # this is missing
     loop.close()
 
-ws_server_thread = threading.Thread(target=setup_websocket, daemon=True)
-ws_server_thread.start()
+def main():
+    ws_server_thread = threading.Thread(target=setup_websocket, daemon=True)
+    ws_server_thread.start()
 
-twitch_thread = threading.Thread(target=listen_to_twitch, daemon=True)
-twitch_thread.start()
+    twitch_thread = threading.Thread(target=listen_to_twitch, daemon=True)
+    twitch_thread.start()
 
-# asyncio.run(listen_to_youtube())
+    # asyncio.run(listen_to_youtube())
 
-twitch_thread.join()
+    twitch_thread.join()
+
+
+if __name__ == "__main__":
+    main()
