@@ -1,0 +1,9 @@
+{"case":"commands_non_mod","source":"twitch","author":"example_user","message":"!commands","classification":"commands","is_mod":false,"bot_outputs":["Available commands: !play !entries"]}
+{"case":"commands_mod","source":"twitch","author":"example_mod","message":"!commands","classification":"commands","is_mod":true,"bot_outputs":["Available commands: !play !entries // Mod Commands: !start !clearentries"]}
+{"case":"entries","source":"twitch","author":"example_user","message":"!entries","classification":"entries","is_mod":false,"initial_entries":["racer_one","racer_two"],"bot_outputs":["Race Entries: racer_one, racer_two"]}
+{"case":"race","source":"twitch","author":"race_user","message":"!race","classification":"entry","is_mod":false,"bot_outputs":["You have been added race_user"]}
+{"case":"play","source":"twitch","author":"play_user","message":"!play","classification":"entry","is_mod":false,"bot_outputs":["You have been added play_user"]}
+{"case":"enter","source":"twitch","author":"enter_user","message":"!enter","classification":"entry","is_mod":false,"bot_outputs":["You have been added enter_user"]}
+{"case":"join","source":"twitch","author":"join_user","message":"!join","classification":"entry","is_mod":false,"bot_outputs":["You have been added join_user"]}
+{"case":"start_mod","source":"twitch","author":"example_mod","message":"!start","classification":"start","is_mod":true,"initial_entries":["racer_one","racer_two"],"bot_outputs":["Starting for racer_one, racer_two"]}
+{"case":"clearentries_mod","source":"twitch","author":"example_mod","message":"!clearentries","classification":"clear_entries","is_mod":true,"initial_entries":["racer_one","racer_two"],"bot_outputs":["All entries have been cleared."]}

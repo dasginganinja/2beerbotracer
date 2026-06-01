@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 
 import pytest
 
@@ -150,6 +151,7 @@ async def replay_twitch_capture_record(record, monkeypatch, tmp_path):
     monkeypatch.setattr(trackracerbot, "CHAT_CAPTURE_FILE", "")
     monkeypatch.setattr(trackracerbot, "entry_file_abs", str(tmp_path / "entries.txt"))
     trackracerbot.entry_queue.clear()
+    trackracerbot.entry_queue.extend(record.get("initial_entries", []))
 
     await trackracerbot.handle_message(
         record["message"],
@@ -194,3 +196,46 @@ async def test_replay_twitch_capture_record_isolates_entry_file(monkeypatch, tmp
     assert outputs == record["bot_outputs"]
     assert list(trackracerbot.entry_queue) == ["example_user"]
     assert (tmp_path / "entries.txt").exists()
+
+
+def load_jsonl_fixture(path):
+    return [
+        json.loads(line)
+        for line in path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+
+
+@pytest.mark.asyncio
+async def test_replay_twitch_command_fixture_covers_all_commands(monkeypatch, tmp_path):
+    fixture_path = (
+        Path(__file__).parent
+        / "fixtures"
+        / "twitch"
+        / "all_commands.jsonl"
+    )
+    records = load_jsonl_fixture(fixture_path)
+
+    assert [record["case"] for record in records] == [
+        "commands_non_mod",
+        "commands_mod",
+        "entries",
+        "race",
+        "play",
+        "enter",
+        "join",
+        "start_mod",
+        "clearentries_mod",
+    ]
+
+    for index, record in enumerate(records):
+        record_tmp_path = tmp_path / str(index)
+        record_tmp_path.mkdir()
+
+        outputs = await replay_twitch_capture_record(
+            record,
+            monkeypatch,
+            record_tmp_path,
+        )
+
+        assert outputs == record["bot_outputs"]
