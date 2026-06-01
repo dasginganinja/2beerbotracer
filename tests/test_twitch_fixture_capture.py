@@ -131,3 +131,59 @@ async def test_handle_message_capture_enabled_writes_twitch_record(tmp_path, mon
             ],
         }
     ]
+
+
+async def replay_twitch_capture_record(record, monkeypatch, tmp_path):
+    outputs = []
+
+    async def fake_print_everywhere(logmessage, twitch_message=None):
+        outputs.append(logmessage)
+
+    monkeypatch.setattr(trackracerbot, "print_everywhere", fake_print_everywhere)
+    monkeypatch.setattr(trackracerbot, "CHAT_CAPTURE_FILE", "")
+    monkeypatch.setattr(trackracerbot, "entry_file_abs", str(tmp_path / "entries.txt"))
+    trackracerbot.entry_queue.clear()
+
+    await trackracerbot.handle_message(
+        record["message"],
+        record["author"],
+        twitch_message=FakeTwitchMessage(is_mod=record["is_mod"]),
+    )
+
+    return outputs
+
+
+@pytest.mark.asyncio
+async def test_replay_twitch_capture_record_verifies_command_output(monkeypatch, tmp_path):
+    record = {
+        "source": "twitch",
+        "author": "example_mod",
+        "message": "!commands",
+        "classification": "commands",
+        "is_mod": True,
+        "bot_outputs": [
+            "Available commands: !play !entries // Mod Commands: !start !clearentries"
+        ],
+    }
+
+    outputs = await replay_twitch_capture_record(record, monkeypatch, tmp_path)
+
+    assert outputs == record["bot_outputs"]
+
+
+@pytest.mark.asyncio
+async def test_replay_twitch_capture_record_isolates_entry_file(monkeypatch, tmp_path):
+    record = {
+        "source": "twitch",
+        "author": "example_user",
+        "message": "!race",
+        "classification": "entry",
+        "is_mod": False,
+        "bot_outputs": ["You have been added example_user"],
+    }
+
+    outputs = await replay_twitch_capture_record(record, monkeypatch, tmp_path)
+
+    assert outputs == record["bot_outputs"]
+    assert list(trackracerbot.entry_queue) == ["example_user"]
+    assert (tmp_path / "entries.txt").exists()
