@@ -139,19 +139,16 @@ async def handle_message(message: str, author: str, twitch_message: TwitchMessag
     # !clearentries - clear list of entries
     # !entries - print entries in race
 
-    is_mod = False
-    if twitch_message is not None and twitch_message.author is not None:
-        is_mod = twitch_message.author.is_mod
-    if youtube_message is not None and youtube_message["authorDetails"] is not None:
-        is_mod = youtube_message['authorDetails']['isChatOwner'] or youtube_message['authorDetails']['isChatModerator']
+    is_mod = is_moderator_message_source(twitch_message=twitch_message, youtube_message=youtube_message)
+    command = classify_message(message)
 
-    if message.lower().startswith("!commands"):
+    if command == COMMAND_COMMANDS:
         commands_message = "Available commands: !play !entries"
         if is_mod:
             commands_message += " // Mod Commands: !start !clearentries"
         await print_everywhere(commands_message, twitch_message=twitch_message)
 
-    if is_entry_message(message):
+    if command == COMMAND_ENTRY:
         if author in entry_queue:
             await print_everywhere("You have already entered, " + author + ". Nice try :)", twitch_message=twitch_message)
             return
@@ -169,15 +166,15 @@ async def handle_message(message: str, author: str, twitch_message: TwitchMessag
         else:
             await print_everywhere("The list is full, " + author + ". Better luck next race!", twitch_message=twitch_message)
 
-    elif message.lower().startswith("!start") and is_mod:
+    elif command == COMMAND_START and is_mod:
         await print_everywhere("Starting for " + ", ".join(itertools.islice(entry_queue,0,MAX_ENTRIES)), twitch_message=twitch_message)
                 
-    elif message.lower().startswith("!clearentries") and is_mod:
+    elif command == COMMAND_CLEAR_ENTRIES and is_mod:
         # Clear the queue
         clear_queue()
         await print_everywhere("All entries have been cleared.", twitch_message=twitch_message)
 
-    elif message.lower().startswith("!entries"):
+    elif command == COMMAND_ENTRIES:
         # Print the queue
         await print_everywhere("Race Entries: " + ", ".join(entry_queue), twitch_message=twitch_message)
 
