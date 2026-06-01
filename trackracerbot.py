@@ -31,6 +31,7 @@ BOT_NAME = os.getenv('TWITCH_BOT_NAME')
 api_key = os.getenv('YOUTUBE_API_KEY')
 youtube_video_id = os.getenv('YOUTUBE_LIVE_VIDEO_ID')
 entry_file = os.getenv('ENTRY_FILE')
+CHAT_CAPTURE_FILE = os.getenv("CHAT_CAPTURE_FILE", "")
 
 # Create a queue for storing the usernames
 entry_queue = collections.deque()
@@ -124,6 +125,46 @@ def is_moderator_message_source(twitch_message: TwitchMessage = None, youtube_me
             or youtube_message["authorDetails"]["isChatModerator"]
         )
     return is_mod
+
+
+def is_chat_capture_enabled() -> bool:
+    return bool(CHAT_CAPTURE_FILE)
+
+
+def build_twitch_capture_record(
+    message: str,
+    author: str,
+    command: str,
+    is_mod: bool,
+    bot_outputs: list[str],
+    twitch_message: TwitchMessage = None,
+) -> dict:
+    if twitch_message is None:
+        return {}
+
+    return {
+        "source": "twitch",
+        "author": author,
+        "message": message,
+        "classification": command,
+        "is_mod": is_mod,
+        "bot_outputs": list(bot_outputs),
+    }
+
+
+def write_chat_capture_record(record: dict) -> None:
+    if not is_chat_capture_enabled() or not record:
+        return
+
+    try:
+        capture_dir = os.path.dirname(CHAT_CAPTURE_FILE)
+        if capture_dir:
+            os.makedirs(capture_dir, exist_ok=True)
+
+        with open(CHAT_CAPTURE_FILE, "a", encoding="utf-8") as capture_file:
+            capture_file.write(json.dumps(record) + "\n")
+    except OSError as e:
+        print(f"Could not write chat capture record: {e}")
 
 
 def clear_queue():
