@@ -15,6 +15,13 @@ class FakeTwitchMessage:
         self.author = FakeAuthor(is_mod)
 
 
+@pytest.fixture(autouse=True)
+def clear_entry_queue():
+    trackracerbot.entry_queue.clear()
+    yield
+    trackracerbot.entry_queue.clear()
+
+
 def test_chat_capture_is_disabled_when_file_path_is_empty(monkeypatch):
     monkeypatch.setattr(trackracerbot, "CHAT_CAPTURE_FILE", "")
 
