@@ -31,6 +31,7 @@ BOT_NAME = os.getenv('TWITCH_BOT_NAME')
 api_key = os.getenv('YOUTUBE_API_KEY')
 youtube_video_id = os.getenv('YOUTUBE_LIVE_VIDEO_ID')
 entry_file = os.getenv('ENTRY_FILE')
+CHAT_CAPTURE_FILE = os.getenv("CHAT_CAPTURE_FILE", "")
 
 # Create a queue for storing the usernames
 entry_queue = collections.deque()
@@ -55,6 +56,117 @@ twitch_channel_ref = None  # Will be set when bot is ready
 # We'll be conservative and send 1 message per 1.5 seconds (20 per 30s)
 MESSAGE_RATE_LIMIT = 1.5  # seconds between messages
 
+ENTRY_COMMANDS = ("!race", "!play", "!enter", "!join")
+ENTRY_EMOTE_PREFIXES = (
+    "artmannJudy",
+    "x100pr3Hndoclap52",
+    "x2beerShrek",
+    "avoidr3Hotdogman",
+    "spacec122GoodVibes",
+    "artmannNatmar",
+    "artmannOhyeah",
+)
+
+COMMAND_COMMANDS = "commands"
+COMMAND_ENTRY = "entry"
+COMMAND_START = "start"
+COMMAND_CLEAR_ENTRIES = "clear_entries"
+COMMAND_ENTRIES = "entries"
+COMMAND_UNKNOWN = "unknown"
+
+COMMANDS_COMMAND = "!commands"
+START_COMMAND = "!start"
+CLEAR_ENTRIES_COMMAND = "!clearentries"
+ENTRIES_COMMAND = "!entries"
+
+
+def is_entry_message(message: str) -> bool:
+    message_lower = message.lower()
+    return message_lower.startswith(ENTRY_COMMANDS) or message.startswith(ENTRY_EMOTE_PREFIXES)
+
+
+def is_commands_message(message: str) -> bool:
+    return message.lower().startswith(COMMANDS_COMMAND)
+
+
+def is_start_message(message: str) -> bool:
+    return message.lower().startswith(START_COMMAND)
+
+
+def is_clear_entries_message(message: str) -> bool:
+    return message.lower().startswith(CLEAR_ENTRIES_COMMAND)
+
+
+def is_entries_message(message: str) -> bool:
+    return message.lower().startswith(ENTRIES_COMMAND)
+
+
+def classify_message(message: str) -> str:
+    if is_commands_message(message):
+        return COMMAND_COMMANDS
+    if is_entry_message(message):
+        return COMMAND_ENTRY
+    if is_start_message(message):
+        return COMMAND_START
+    if is_clear_entries_message(message):
+        return COMMAND_CLEAR_ENTRIES
+    if is_entries_message(message):
+        return COMMAND_ENTRIES
+    return COMMAND_UNKNOWN
+
+
+def is_moderator_message_source(twitch_message: TwitchMessage = None, youtube_message=None) -> bool:
+    is_mod = False
+    if twitch_message is not None and twitch_message.author is not None:
+        is_mod = twitch_message.author.is_mod
+    if youtube_message is not None and youtube_message["authorDetails"] is not None:
+        is_mod = (
+            youtube_message["authorDetails"]["isChatOwner"]
+            or youtube_message["authorDetails"]["isChatModerator"]
+        )
+    return is_mod
+
+
+def is_chat_capture_enabled() -> bool:
+    return bool(CHAT_CAPTURE_FILE)
+
+
+def build_twitch_capture_record(
+    message: str,
+    author: str,
+    command: str,
+    is_mod: bool,
+    bot_outputs: list[str],
+    twitch_message: TwitchMessage = None,
+) -> dict:
+    if twitch_message is None:
+        return {}
+
+    return {
+        "source": "twitch",
+        "author": author,
+        "message": message,
+        "classification": command,
+        "is_mod": is_mod,
+        "bot_outputs": list(bot_outputs),
+    }
+
+
+def write_chat_capture_record(record: dict) -> None:
+    if not is_chat_capture_enabled() or not record:
+        return
+
+    try:
+        capture_dir = os.path.dirname(CHAT_CAPTURE_FILE)
+        if capture_dir:
+            os.makedirs(capture_dir, exist_ok=True)
+
+        with open(CHAT_CAPTURE_FILE, "a", encoding="utf-8") as capture_file:
+            capture_file.write(json.dumps(record) + "\n")
+    except OSError as e:
+        print(f"Could not write chat capture record: {e}")
+
+
 def clear_queue():
     # Clear the queue
     entry_queue.clear()
@@ -68,21 +180,33 @@ async def handle_message(message: str, author: str, twitch_message: TwitchMessag
     # !clearentries - clear list of entries
     # !entries - print entries in race
 
-    is_mod = False
-    if twitch_message is not None and twitch_message.author is not None:
-        is_mod = twitch_message.author.is_mod
-    if youtube_message is not None and youtube_message["authorDetails"] is not None:
-        is_mod = youtube_message['authorDetails']['isChatOwner'] or youtube_message['authorDetails']['isChatModerator']
+    is_mod = is_moderator_message_source(twitch_message=twitch_message, youtube_message=youtube_message)
+    command = classify_message(message)
+    capture_outputs = []
 
-    if message.lower().startswith("!commands"):
+    async def respond(logmessage: str):
+        capture_outputs.append(logmessage)
+        await print_everywhere(logmessage, twitch_message=twitch_message)
+
+    if command == COMMAND_COMMANDS:
         commands_message = "Available commands: !play !entries"
         if is_mod:
             commands_message += " // Mod Commands: !start !clearentries"
-        await print_everywhere(commands_message, twitch_message=twitch_message)
+        await respond(commands_message)
 
-    if message.lower().startswith("!race") or message.lower().startswith("!play") or message.lower().startswith("!enter") or message.lower().startswith("!join") or message.count("artmannJudy") or message.count("x100pr3Hndoclap52") or message.count("x2beerShrek") or message.count("avoidr3Hotdogman") or message.count("spacec122GoodVibes") or message.count("artmannNatmar") or message.count("artmannOhyeah"):
+    if command == COMMAND_ENTRY:
         if author in entry_queue:
-            await print_everywhere("You have already entered, " + author + ". Nice try :)", twitch_message=twitch_message)
+            await respond("You have already entered, " + author + ". Nice try :)")
+            write_chat_capture_record(
+                build_twitch_capture_record(
+                    message=message,
+                    author=author,
+                    command=command,
+                    is_mod=is_mod,
+                    bot_outputs=capture_outputs,
+                    twitch_message=twitch_message,
+                )
+            )
             return
 
         # Add to queue, or print full message
@@ -94,21 +218,32 @@ async def handle_message(message: str, author: str, twitch_message: TwitchMessag
             bang_out_queue_to_file(entry_file_abs)
             
 
-            await print_everywhere("You have been added " + author, twitch_message=twitch_message)
+            await respond("You have been added " + author)
         else:
-            await print_everywhere("The list is full, " + author + ". Better luck next race!", twitch_message=twitch_message)
+            await respond("The list is full, " + author + ". Better luck next race!")
 
-    elif message.lower().startswith("!start") and is_mod:
-        await print_everywhere("Starting for " + ", ".join(itertools.islice(entry_queue,0,MAX_ENTRIES)), twitch_message=twitch_message)
+    elif command == COMMAND_START and is_mod:
+        await respond("Starting for " + ", ".join(itertools.islice(entry_queue,0,MAX_ENTRIES)))
                 
-    elif message.lower().startswith("!clearentries") and is_mod:
+    elif command == COMMAND_CLEAR_ENTRIES and is_mod:
         # Clear the queue
         clear_queue()
-        await print_everywhere("All entries have been cleared.", twitch_message=twitch_message)
+        await respond("All entries have been cleared.")
 
-    elif message.lower().startswith("!entries"):
+    elif command == COMMAND_ENTRIES:
         # Print the queue
-        await print_everywhere("Race Entries: " + ", ".join(entry_queue), twitch_message=twitch_message)
+        await respond("Race Entries: " + ", ".join(entry_queue))
+
+    write_chat_capture_record(
+        build_twitch_capture_record(
+            message=message,
+            author=author,
+            command=command,
+            is_mod=is_mod,
+            bot_outputs=capture_outputs,
+            twitch_message=twitch_message,
+        )
+    )
 
 def bang_out_queue_to_file(file):
     with open(file, 'w') as f:
@@ -399,12 +534,17 @@ def setup_websocket():
     loop.run_forever() # this is missing
     loop.close()
 
-ws_server_thread = threading.Thread(target=setup_websocket, daemon=True)
-ws_server_thread.start()
+def main():
+    ws_server_thread = threading.Thread(target=setup_websocket, daemon=True)
+    ws_server_thread.start()
 
-twitch_thread = threading.Thread(target=listen_to_twitch, daemon=True)
-twitch_thread.start()
+    twitch_thread = threading.Thread(target=listen_to_twitch, daemon=True)
+    twitch_thread.start()
 
-# asyncio.run(listen_to_youtube())
+    # asyncio.run(listen_to_youtube())
 
-twitch_thread.join()
+    twitch_thread.join()
+
+
+if __name__ == "__main__":
+    main()
