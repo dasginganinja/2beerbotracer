@@ -224,6 +224,11 @@ async def test_replay_twitch_command_fixture_covers_all_commands(monkeypatch, tm
         "play",
         "enter",
         "join",
+        "race_duplicate",
+        "play_duplicate",
+        "enter_duplicate",
+        "join_duplicate",
+        "emote_duplicate",
         "start_mod",
         "clearentries_mod",
     ]
