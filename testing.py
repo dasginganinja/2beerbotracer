@@ -48,8 +48,8 @@ entry_file_abs = os.path.abspath(entry_file)
 MAX_ENTRIES = 30
 
 
-YOUTUBE_TIMEOUT_DEFAULT = 300
-YOUTUBE_TIMEOUT_ACTIVE = 40
+YOUTUBE_TIMEOUT_DEFAULT = 120
+YOUTUBE_TIMEOUT_ACTIVE = 3
 YOUTUBE_TIMEOUT = YOUTUBE_TIMEOUT_DEFAULT
 
 
@@ -106,7 +106,7 @@ async def handle_message(message: str, author: str, twitch_message: TwitchMessag
     
     elif message.lower().startswith("!ytenable") and is_mod:
         YOUTUBE_TIMEOUT = YOUTUBE_TIMEOUT_ACTIVE
-        await print_everywhere("Time to head to YT! -- we are listening for messages", twitch_message=twitch_message)
+        await print_everywhere("Starting to listen for !race entries on YT. Waiting for !clearentries.", twitch_message=twitch_message)
     elif message.lower().startswith("!ytdisable") and is_mod:
         YOUTUBE_TIMEOUT = YOUTUBE_TIMEOUT_DEFAULT
         await print_everywhere("YT Message Listening Disabled", twitch_message=twitch_message)

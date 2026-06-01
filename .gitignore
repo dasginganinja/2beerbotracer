@@ -1,4 +1,5 @@
 # Ignore sensitive files
 .env
 .venv/
+.venv-codex/
 /entries.txt
