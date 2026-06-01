@@ -50,6 +50,9 @@ python -m py_compile trackracerbot.py testing.py
 
 - Primary runtime file: `trackracerbot.py`.
 - Older/test variant: `testing.py`.
+- VS Code launch mappings in `.vscode/launch.json`:
+  - `Twitch Track Racer Bot` launches `trackracerbot.py`.
+  - `Youtube Testing` launches `testing.py`.
 - Entry persistence file defaults to `entries.txt` unless `ENTRY_FILE` is set.
 - `entries.txt` is ignored by Git because it is runtime state.
 - Default maximum queue length is `MAX_ENTRIES = 30`.
@@ -64,7 +67,7 @@ python -m py_compile trackracerbot.py testing.py
   - `setup_websocket()` in a daemon thread.
   - `listen_to_twitch()` in a daemon thread.
   - `twitch_thread.join()` to keep the process alive.
-- `testing.py` has YouTube polling enabled with `asyncio.run(listen_to_youtube())`.
+- `testing.py` starts the WebSocket thread, starts the Twitch thread, and has YouTube polling enabled with `asyncio.run(listen_to_youtube())`. In practice, the `Youtube Testing` launch config is the Twitch + YouTube integration path.
 
 ## Twitch Message Queue
 
