@@ -182,16 +182,31 @@ async def handle_message(message: str, author: str, twitch_message: TwitchMessag
 
     is_mod = is_moderator_message_source(twitch_message=twitch_message, youtube_message=youtube_message)
     command = classify_message(message)
+    capture_outputs = []
+
+    async def respond(logmessage: str):
+        capture_outputs.append(logmessage)
+        await print_everywhere(logmessage, twitch_message=twitch_message)
 
     if command == COMMAND_COMMANDS:
         commands_message = "Available commands: !play !entries"
         if is_mod:
             commands_message += " // Mod Commands: !start !clearentries"
-        await print_everywhere(commands_message, twitch_message=twitch_message)
+        await respond(commands_message)
 
     if command == COMMAND_ENTRY:
         if author in entry_queue:
-            await print_everywhere("You have already entered, " + author + ". Nice try :)", twitch_message=twitch_message)
+            await respond("You have already entered, " + author + ". Nice try :)")
+            write_chat_capture_record(
+                build_twitch_capture_record(
+                    message=message,
+                    author=author,
+                    command=command,
+                    is_mod=is_mod,
+                    bot_outputs=capture_outputs,
+                    twitch_message=twitch_message,
+                )
+            )
             return
 
         # Add to queue, or print full message
@@ -203,21 +218,32 @@ async def handle_message(message: str, author: str, twitch_message: TwitchMessag
             bang_out_queue_to_file(entry_file_abs)
             
 
-            await print_everywhere("You have been added " + author, twitch_message=twitch_message)
+            await respond("You have been added " + author)
         else:
-            await print_everywhere("The list is full, " + author + ". Better luck next race!", twitch_message=twitch_message)
+            await respond("The list is full, " + author + ". Better luck next race!")
 
     elif command == COMMAND_START and is_mod:
-        await print_everywhere("Starting for " + ", ".join(itertools.islice(entry_queue,0,MAX_ENTRIES)), twitch_message=twitch_message)
+        await respond("Starting for " + ", ".join(itertools.islice(entry_queue,0,MAX_ENTRIES)))
                 
     elif command == COMMAND_CLEAR_ENTRIES and is_mod:
         # Clear the queue
         clear_queue()
-        await print_everywhere("All entries have been cleared.", twitch_message=twitch_message)
+        await respond("All entries have been cleared.")
 
     elif command == COMMAND_ENTRIES:
         # Print the queue
-        await print_everywhere("Race Entries: " + ", ".join(entry_queue), twitch_message=twitch_message)
+        await respond("Race Entries: " + ", ".join(entry_queue))
+
+    write_chat_capture_record(
+        build_twitch_capture_record(
+            message=message,
+            author=author,
+            command=command,
+            is_mod=is_mod,
+            bot_outputs=capture_outputs,
+            twitch_message=twitch_message,
+        )
+    )
 
 def bang_out_queue_to_file(file):
     with open(file, 'w') as f:

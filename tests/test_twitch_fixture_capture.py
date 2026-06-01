@@ -1,5 +1,7 @@
 import json
 
+import pytest
+
 import trackracerbot
 
 
@@ -68,3 +70,64 @@ def test_write_chat_capture_record_appends_json_line(tmp_path, monkeypatch):
         "is_mod": False,
         "bot_outputs": ["Race Entries: example_user"],
     }
+
+
+@pytest.mark.asyncio
+async def test_handle_message_capture_disabled_does_not_write_file(tmp_path, monkeypatch):
+    capture_file = tmp_path / "chat-fixtures.jsonl"
+    monkeypatch.setattr(trackracerbot, "CHAT_CAPTURE_FILE", "")
+
+    outputs = []
+
+    async def fake_print_everywhere(logmessage, twitch_message=None):
+        outputs.append(logmessage)
+
+    monkeypatch.setattr(trackracerbot, "print_everywhere", fake_print_everywhere)
+
+    await trackracerbot.handle_message(
+        "!commands",
+        "example_user",
+        twitch_message=FakeTwitchMessage(is_mod=False),
+    )
+
+    assert outputs == ["Available commands: !play !entries"]
+    assert not capture_file.exists()
+
+
+@pytest.mark.asyncio
+async def test_handle_message_capture_enabled_writes_twitch_record(tmp_path, monkeypatch):
+    capture_file = tmp_path / "chat-fixtures.jsonl"
+    monkeypatch.setattr(trackracerbot, "CHAT_CAPTURE_FILE", str(capture_file))
+
+    outputs = []
+
+    async def fake_print_everywhere(logmessage, twitch_message=None):
+        outputs.append(logmessage)
+
+    monkeypatch.setattr(trackracerbot, "print_everywhere", fake_print_everywhere)
+
+    await trackracerbot.handle_message(
+        "!commands",
+        "example_mod",
+        twitch_message=FakeTwitchMessage(is_mod=True),
+    )
+
+    assert outputs == [
+        "Available commands: !play !entries // Mod Commands: !start !clearentries"
+    ]
+    records = [
+        json.loads(line)
+        for line in capture_file.read_text(encoding="utf-8").splitlines()
+    ]
+    assert records == [
+        {
+            "source": "twitch",
+            "author": "example_mod",
+            "message": "!commands",
+            "classification": "commands",
+            "is_mod": True,
+            "bot_outputs": [
+                "Available commands: !play !entries // Mod Commands: !start !clearentries"
+            ],
+        }
+    ]
