@@ -11,6 +11,17 @@
             "console": "integratedTerminal"
         },
         {
+            "name": "Twitch Track Racer Bot - Capture Fixtures",
+            "type": "python",
+            "request": "launch",
+            "program": "trackracerbot.py",
+            "justMyCode": true,
+            "console": "integratedTerminal",
+            "env": {
+                "CHAT_CAPTURE_FILE": "debug/chat-fixtures.jsonl"
+            }
+        },
+        {
             "name": "Youtube Testing",
             "type": "python",
             "request": "launch",

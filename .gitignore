@@ -5,3 +5,4 @@
 /entries.txt
 __pycache__/
 *.py[cod]
+debug/*.jsonl
