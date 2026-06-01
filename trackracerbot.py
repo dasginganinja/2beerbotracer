@@ -100,6 +100,20 @@ def is_entries_message(message: str) -> bool:
     return message.lower().startswith(ENTRIES_COMMAND)
 
 
+def classify_message(message: str) -> str:
+    if is_commands_message(message):
+        return COMMAND_COMMANDS
+    if is_entry_message(message):
+        return COMMAND_ENTRY
+    if is_start_message(message):
+        return COMMAND_START
+    if is_clear_entries_message(message):
+        return COMMAND_CLEAR_ENTRIES
+    if is_entries_message(message):
+        return COMMAND_ENTRIES
+    return COMMAND_UNKNOWN
+
+
 def clear_queue():
     # Clear the queue
     entry_queue.clear()

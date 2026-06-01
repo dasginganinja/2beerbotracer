@@ -49,3 +49,20 @@ def test_command_detection_helpers_reject_non_matching_messages():
     assert not trackracerbot.is_clear_entries_message("hello !clearentries")
     assert not trackracerbot.is_entries_message("entries")
     assert not trackracerbot.is_entries_message("hello !entries")
+
+
+def test_classify_message_returns_expected_command_labels():
+    assert trackracerbot.classify_message("!commands") == trackracerbot.COMMAND_COMMANDS
+    assert trackracerbot.classify_message("!race") == trackracerbot.COMMAND_ENTRY
+    assert trackracerbot.classify_message("artmannJudy") == trackracerbot.COMMAND_ENTRY
+    assert trackracerbot.classify_message("!start") == trackracerbot.COMMAND_START
+    assert trackracerbot.classify_message("!clearentries") == trackracerbot.COMMAND_CLEAR_ENTRIES
+    assert trackracerbot.classify_message("!entries") == trackracerbot.COMMAND_ENTRIES
+    assert trackracerbot.classify_message("just chatting") == trackracerbot.COMMAND_UNKNOWN
+
+
+def test_classify_message_preserves_case_and_prefix_behavior():
+    assert trackracerbot.classify_message("!COMMANDS") == trackracerbot.COMMAND_COMMANDS
+    assert trackracerbot.classify_message("!PLAY please") == trackracerbot.COMMAND_ENTRY
+    assert trackracerbot.classify_message("x100pr3Hndoclap52 extra words") == trackracerbot.COMMAND_ENTRY
+    assert trackracerbot.classify_message("hello artmannJudy") == trackracerbot.COMMAND_UNKNOWN
