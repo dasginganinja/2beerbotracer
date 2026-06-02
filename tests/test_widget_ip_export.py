@@ -6,7 +6,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = REPO_ROOT / "scripts" / "update_widget_ip.py"
 WIDGET_FILES = ("entries-widget-1col.html", "entries-widget.html")
-TEST_IP = "203.0.113.10"
+TEST_HOST = "example.com"
 
 
 def test_widget_ip_export_writes_generated_files_without_changing_sources(tmp_path):
@@ -25,7 +25,7 @@ def test_widget_ip_export_writes_generated_files_without_changing_sources(tmp_pa
             sys.executable,
             str(SCRIPT),
             "--ip",
-            TEST_IP,
+            TEST_HOST,
             "--output-dir",
             str(output_dir),
             *[str(path) for path in source_files],
@@ -39,6 +39,6 @@ def test_widget_ip_export_writes_generated_files_without_changing_sources(tmp_pa
         export_text = (output_dir / source_path.name).read_text(encoding="utf-8")
 
         assert "ws://localhost:64209" in source_text
-        assert TEST_IP not in source_text
-        assert f"ws://{TEST_IP}:64209" in export_text
+        assert TEST_HOST not in source_text
+        assert f"ws://{TEST_HOST}:64209" in export_text
         assert "ws://localhost:64209" not in export_text
