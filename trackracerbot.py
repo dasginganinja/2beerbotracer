@@ -4,6 +4,7 @@ import collections
 import itertools
 import threading
 import asyncio
+import time
 
 from twitchio.ext import commands
 from twitchio.message import Message as TwitchMessage
@@ -46,6 +47,13 @@ entry_file_abs = os.path.abspath(entry_file)
 
 # Set maximum number of entries
 MAX_ENTRIES = 30
+
+submission_stats = {
+    "started_at": None,
+    "accepted_entries": 0,
+    "twitch_entries": 0,
+    "reported": False,
+}
 
 # Message queue for Twitch chat to handle rate limiting
 # Will be initialized when Bot is ready (needs event loop)
@@ -167,6 +175,60 @@ def write_chat_capture_record(record: dict) -> None:
         print(f"Could not write chat capture record: {e}")
 
 
+def reset_submission_stats(started_at: float = None) -> None:
+    submission_stats["started_at"] = started_at
+    submission_stats["accepted_entries"] = 0
+    submission_stats["twitch_entries"] = 0
+    submission_stats["reported"] = False
+
+
+def format_elapsed_time(seconds: float) -> str:
+    total_seconds = max(0, int(seconds))
+    hours = total_seconds // 3600
+    minutes = (total_seconds % 3600) // 60
+    remaining_seconds = total_seconds % 60
+
+    if hours:
+        return f"{hours}h {minutes}m {remaining_seconds}s"
+    if minutes:
+        return f"{minutes}m {remaining_seconds}s"
+    return f"{remaining_seconds}s"
+
+
+def record_submission_entry(twitch_message: TwitchMessage = None) -> None:
+    if submission_stats["started_at"] is None or submission_stats["reported"]:
+        return
+
+    submission_stats["accepted_entries"] += 1
+    if twitch_message is not None:
+        submission_stats["twitch_entries"] += 1
+
+
+def build_submission_stats_message(finished_at: float) -> str:
+    elapsed = format_elapsed_time(finished_at - submission_stats["started_at"])
+    accepted_entries = submission_stats["accepted_entries"]
+    twitch_entries = submission_stats["twitch_entries"]
+    twitch_percentage = (
+        twitch_entries / accepted_entries * 100
+        if accepted_entries
+        else 0
+    )
+
+    return (
+        f"Entry list filled in {elapsed}. "
+        f"Twitch entries: {twitch_percentage:.1f}% "
+        f"({twitch_entries}/{accepted_entries})."
+    )
+
+
+def should_report_submission_stats() -> bool:
+    return (
+        submission_stats["started_at"] is not None
+        and not submission_stats["reported"]
+        and len(entry_queue) >= MAX_ENTRIES
+    )
+
+
 def clear_queue():
     # Clear the queue
     entry_queue.clear()
@@ -216,9 +278,13 @@ async def handle_message(message: str, author: str, twitch_message: TwitchMessag
 
             # Write to a file for the MAX_ENTRIES
             bang_out_queue_to_file(entry_file_abs)
-            
+
+            record_submission_entry(twitch_message=twitch_message)
 
             await respond("You have been added " + author)
+            if should_report_submission_stats():
+                await respond(build_submission_stats_message(time.monotonic()))
+                submission_stats["reported"] = True
         else:
             await respond("The list is full, " + author + ". Better luck next race!")
 
@@ -228,6 +294,7 @@ async def handle_message(message: str, author: str, twitch_message: TwitchMessag
     elif command == COMMAND_CLEAR_ENTRIES and is_mod:
         # Clear the queue
         clear_queue()
+        reset_submission_stats(time.monotonic())
         await respond("All entries have been cleared.")
 
     elif command == COMMAND_ENTRIES:

@@ -19,8 +19,10 @@ class FakeTwitchMessage:
 @pytest.fixture(autouse=True)
 def clear_entry_queue():
     trackracerbot.entry_queue.clear()
+    trackracerbot.reset_submission_stats(None)
     yield
     trackracerbot.entry_queue.clear()
+    trackracerbot.reset_submission_stats(None)
 
 
 def test_chat_capture_is_disabled_when_file_path_is_empty(monkeypatch):
@@ -244,3 +246,123 @@ async def test_replay_twitch_command_fixture_covers_all_commands(monkeypatch, tm
         )
 
         assert outputs == record["bot_outputs"]
+
+
+@pytest.mark.asyncio
+async def test_clear_entries_starts_submission_stats_timer(monkeypatch, tmp_path):
+    outputs = []
+
+    async def fake_print_everywhere(logmessage, twitch_message=None):
+        outputs.append(logmessage)
+
+    monkeypatch.setattr(trackracerbot, "print_everywhere", fake_print_everywhere)
+    monkeypatch.setattr(trackracerbot, "CHAT_CAPTURE_FILE", "")
+    monkeypatch.setattr(trackracerbot, "entry_file_abs", str(tmp_path / "entries.txt"))
+    monkeypatch.setattr(trackracerbot.time, "monotonic", lambda: 100.0)
+    trackracerbot.entry_queue.extend(["racer_one", "racer_two"])
+
+    await trackracerbot.handle_message(
+        "!clearentries",
+        "example_mod",
+        twitch_message=FakeTwitchMessage(is_mod=True),
+    )
+
+    assert outputs == ["All entries have been cleared."]
+    assert trackracerbot.submission_stats["started_at"] == 100.0
+    assert trackracerbot.submission_stats["accepted_entries"] == 0
+    assert trackracerbot.submission_stats["twitch_entries"] == 0
+    assert not trackracerbot.submission_stats["reported"]
+
+
+@pytest.mark.asyncio
+async def test_full_entry_list_reports_elapsed_time_and_twitch_percentage(monkeypatch, tmp_path):
+    outputs = []
+    current_time = 200.0
+
+    def fake_monotonic():
+        return current_time
+
+    async def fake_print_everywhere(logmessage, twitch_message=None):
+        outputs.append(logmessage)
+
+    monkeypatch.setattr(trackracerbot, "print_everywhere", fake_print_everywhere)
+    monkeypatch.setattr(trackracerbot, "CHAT_CAPTURE_FILE", "")
+    monkeypatch.setattr(trackracerbot, "entry_file_abs", str(tmp_path / "entries.txt"))
+    monkeypatch.setattr(trackracerbot.time, "monotonic", fake_monotonic)
+
+    await trackracerbot.handle_message(
+        "!clearentries",
+        "example_mod",
+        twitch_message=FakeTwitchMessage(is_mod=True),
+    )
+
+    current_time = 327.0
+    for index in range(21):
+        await trackracerbot.handle_message(
+            "!race",
+            f"twitch_user_{index}",
+            twitch_message=FakeTwitchMessage(is_mod=False),
+        )
+
+    for index in range(9):
+        await trackracerbot.handle_message(
+            "!race",
+            f"youtube_user_{index}",
+            youtube_message={"authorDetails": {"isChatOwner": False, "isChatModerator": False}},
+        )
+
+    assert outputs[-1] == (
+        "Entry list filled in 2m 7s. Twitch entries: 70.0% (21/30)."
+    )
+    assert trackracerbot.submission_stats["reported"]
+
+
+@pytest.mark.asyncio
+async def test_submission_stats_do_not_count_duplicates_or_report_twice(monkeypatch, tmp_path):
+    outputs = []
+
+    async def fake_print_everywhere(logmessage, twitch_message=None):
+        outputs.append(logmessage)
+
+    monkeypatch.setattr(trackracerbot, "print_everywhere", fake_print_everywhere)
+    monkeypatch.setattr(trackracerbot, "CHAT_CAPTURE_FILE", "")
+    monkeypatch.setattr(trackracerbot, "entry_file_abs", str(tmp_path / "entries.txt"))
+    monkeypatch.setattr(trackracerbot.time, "monotonic", lambda: 10.0)
+
+    await trackracerbot.handle_message(
+        "!clearentries",
+        "example_mod",
+        twitch_message=FakeTwitchMessage(is_mod=True),
+    )
+    await trackracerbot.handle_message(
+        "!race",
+        "duplicate_user",
+        twitch_message=FakeTwitchMessage(is_mod=False),
+    )
+    await trackracerbot.handle_message(
+        "!race",
+        "duplicate_user",
+        twitch_message=FakeTwitchMessage(is_mod=False),
+    )
+
+    for index in range(29):
+        await trackracerbot.handle_message(
+            "!race",
+            f"youtube_user_{index}",
+            youtube_message={"authorDetails": {"isChatOwner": False, "isChatModerator": False}},
+        )
+
+    await trackracerbot.handle_message(
+        "!race",
+        "late_user",
+        twitch_message=FakeTwitchMessage(is_mod=False),
+    )
+
+    stats_outputs = [
+        output
+        for output in outputs
+        if output.startswith("Entry list filled in ")
+    ]
+    assert stats_outputs == [
+        "Entry list filled in 0s. Twitch entries: 3.3% (1/30)."
+    ]
