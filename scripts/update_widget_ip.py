@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Update widget WebSocket URLs for local deployment.
+"""Export widgets with deployment WebSocket URLs.
 
 Repository widget files use localhost by default so personal network details
-are not committed. Run this script when you need local files pointed at your
-current external IP address.
+are not committed. Run this script when you need generated copies pointed at
+your current external IP address.
 """
 
 from __future__ import annotations
@@ -18,6 +18,7 @@ DEFAULT_FILES = (
     "entries-widget-1col.html",
     "entries-widget.html",
 )
+DEFAULT_OUTPUT_DIR = "widget-exports"
 DEFAULT_PORT = 64209
 IPIFY_URL = "https://api.ipify.org"
 WS_URL_RE = re.compile(r'ws://(?:localhost|127\.0\.0\.1|(?:\d{1,3}\.){3}\d{1,3})(?::\d+)?')
@@ -28,14 +29,14 @@ def detect_external_ip() -> str:
         return response.read().decode("utf-8").strip()
 
 
-def update_file(path: Path, host: str, port: int) -> bool:
-    text = path.read_text(encoding="utf-8")
+def export_file(source_path: Path, output_dir: Path, host: str, port: int) -> Path:
+    text = source_path.read_text(encoding="utf-8")
     replacement = f"ws://{host}:{port}"
     updated = WS_URL_RE.sub(replacement, text)
-    if updated == text:
-        return False
-    path.write_text(updated, encoding="utf-8", newline="")
-    return True
+    output_dir.mkdir(parents=True, exist_ok=True)
+    output_path = output_dir / source_path.name
+    output_path.write_text(updated, encoding="utf-8", newline="")
+    return output_path
 
 
 def main() -> int:
@@ -53,6 +54,11 @@ def main() -> int:
         help=f"WebSocket port to use. Default: {DEFAULT_PORT}",
     )
     parser.add_argument(
+        "--output-dir",
+        default=DEFAULT_OUTPUT_DIR,
+        help=f"Directory for generated widget files. Default: {DEFAULT_OUTPUT_DIR}",
+    )
+    parser.add_argument(
         "files",
         nargs="*",
         default=DEFAULT_FILES,
@@ -61,21 +67,18 @@ def main() -> int:
     args = parser.parse_args()
 
     host = args.ip or detect_external_ip()
-    changed = []
+    output_dir = Path(args.output_dir)
+    exported = []
 
     for filename in args.files:
         path = Path(filename)
         if not path.exists():
             raise SystemExit(f"File not found: {path}")
-        if update_file(path, host, args.port):
-            changed.append(str(path))
+        exported.append(export_file(path, output_dir, host, args.port))
 
-    if changed:
-        print(f"Updated {len(changed)} file(s) to ws://{host}:{args.port}")
-        for filename in changed:
-            print(f"- {filename}")
-    else:
-        print("No widget WebSocket URLs needed updating.")
+    print(f"Exported {len(exported)} file(s) to {output_dir} with ws://{host}:{args.port}")
+    for path in exported:
+        print(f"- {path}")
 
     return 0
 
