@@ -73,7 +73,7 @@ The WebSocket uses a simple command-based protocol:
 
 The HTML dashboard (`browsersource-*.html`) connects to the WebSocket at:
 ```
-ws://216.164.144.81:64209
+ws://localhost:64209
 ```
 
 The client:
