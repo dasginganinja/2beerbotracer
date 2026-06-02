@@ -35,8 +35,7 @@ function fillTable(data) {
 }
 
 
-// const socket = new WebSocket("ws://localhost:5678");
-const socket = new WebSocket("ws://216.164.205.34:64209");
+const socket = new WebSocket("ws://localhost:64209");
 
 function refresh_queue() {
     socket.send("send_queue");
