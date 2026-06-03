@@ -272,6 +272,69 @@ async def test_twenty_ninth_entry_response_uses_display_car_number(monkeypatch, 
 
 
 @pytest.mark.asyncio
+async def test_entry_lookup_command_returns_name_for_display_number(monkeypatch):
+    outputs = []
+
+    async def fake_print_everywhere(logmessage, twitch_message=None):
+        outputs.append(logmessage)
+
+    monkeypatch.setattr(trackracerbot, "print_everywhere", fake_print_everywhere)
+    monkeypatch.setattr(trackracerbot, "CHAT_CAPTURE_FILE", "")
+    trackracerbot.entry_queue.extend(f"racer_{index}" for index in range(28))
+    trackracerbot.entry_queue.append("NiceUser")
+
+    await trackracerbot.handle_message(
+        "!entry 69",
+        "viewer",
+        twitch_message=FakeTwitchMessage(is_mod=False),
+    )
+
+    assert outputs == ["Car #69 is NiceUser."]
+
+
+@pytest.mark.asyncio
+async def test_entry_lookup_command_returns_display_number_for_name(monkeypatch):
+    outputs = []
+
+    async def fake_print_everywhere(logmessage, twitch_message=None):
+        outputs.append(logmessage)
+
+    monkeypatch.setattr(trackracerbot, "print_everywhere", fake_print_everywhere)
+    monkeypatch.setattr(trackracerbot, "CHAT_CAPTURE_FILE", "")
+    trackracerbot.entry_queue.extend(f"racer_{index}" for index in range(28))
+    trackracerbot.entry_queue.append("NiceUser")
+
+    await trackracerbot.handle_message(
+        "!entry niceuser",
+        "viewer",
+        twitch_message=FakeTwitchMessage(is_mod=False),
+    )
+
+    assert outputs == ["NiceUser is car #69."]
+
+
+@pytest.mark.asyncio
+async def test_entry_lookup_command_ignores_leading_at_for_name(monkeypatch):
+    outputs = []
+
+    async def fake_print_everywhere(logmessage, twitch_message=None):
+        outputs.append(logmessage)
+
+    monkeypatch.setattr(trackracerbot, "print_everywhere", fake_print_everywhere)
+    monkeypatch.setattr(trackracerbot, "CHAT_CAPTURE_FILE", "")
+    trackracerbot.entry_queue.extend(f"racer_{index}" for index in range(28))
+    trackracerbot.entry_queue.append("NiceUser")
+
+    await trackracerbot.handle_message(
+        "!entry @niceuser",
+        "viewer",
+        twitch_message=FakeTwitchMessage(is_mod=False),
+    )
+
+    assert outputs == ["NiceUser is car #69."]
+
+
+@pytest.mark.asyncio
 async def test_start_response_rotates_and_lowercases_lineup(monkeypatch, tmp_path):
     outputs = []
 

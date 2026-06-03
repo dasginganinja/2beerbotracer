@@ -53,6 +53,8 @@ def test_command_detection_helpers_accept_current_prefixes_case_insensitively():
     assert trackracerbot.is_clear_entries_message("!CLEARENTRIES now")
     assert trackracerbot.is_entries_message("!entries")
     assert trackracerbot.is_entries_message("!ENTRIES please")
+    assert trackracerbot.is_entry_lookup_message("!entry 12")
+    assert trackracerbot.is_entry_lookup_message("!ENTRY racer")
 
 
 def test_command_detection_helpers_reject_non_matching_messages():
@@ -68,6 +70,8 @@ def test_command_detection_helpers_reject_non_matching_messages():
     assert not trackracerbot.is_clear_entries_message("hello !clearentries")
     assert not trackracerbot.is_entries_message("entries")
     assert not trackracerbot.is_entries_message("hello !entries")
+    assert not trackracerbot.is_entry_lookup_message("entry 12")
+    assert not trackracerbot.is_entry_lookup_message("hello !entry 12")
 
 
 def test_classify_message_returns_expected_command_labels():
@@ -79,6 +83,7 @@ def test_classify_message_returns_expected_command_labels():
     assert trackracerbot.classify_message("!closeentries") == trackracerbot.COMMAND_CLOSE_ENTRIES
     assert trackracerbot.classify_message("!clearentries") == trackracerbot.COMMAND_CLEAR_ENTRIES
     assert trackracerbot.classify_message("!entries") == trackracerbot.COMMAND_ENTRIES
+    assert trackracerbot.classify_message("!entry 12") == trackracerbot.COMMAND_ENTRY_LOOKUP
     assert trackracerbot.classify_message("just chatting") == trackracerbot.COMMAND_UNKNOWN
 
 
@@ -131,6 +136,37 @@ def test_build_duplicate_entry_response_rotates_and_preserves_author_case():
 def test_build_duplicate_entry_response_uses_display_car_number():
     assert trackracerbot.build_duplicate_entry_response("NiceUser", 29, 0) == (
         "You're already in, NiceUser. You're car #69."
+    )
+
+
+def test_find_entry_by_display_number_uses_display_car_numbers():
+    queue = ["car_one", "car_two"] + [f"racer_{index}" for index in range(3, 30)]
+
+    assert trackracerbot.find_entry_by_display_number(queue, 1) == ("car_one", 1)
+    assert trackracerbot.find_entry_by_display_number(queue, 69) == ("racer_29", 29)
+    assert trackracerbot.find_entry_by_display_number(queue, 29) is None
+
+
+def test_find_entry_by_name_matches_case_insensitively():
+    queue = ["RacerOne", "CAPSUser"]
+
+    assert trackracerbot.find_entry_by_name(queue, "capsuser") == ("CAPSUser", 2)
+    assert trackracerbot.find_entry_by_name(queue, "@capsuser") == ("CAPSUser", 2)
+    assert trackracerbot.find_entry_by_name(queue, " missing ") is None
+
+
+def test_build_entry_lookup_response_by_number_and_name():
+    assert trackracerbot.build_entry_lookup_response("69", ["racer"] * 28 + ["NiceUser"]) == (
+        "Car #69 is NiceUser."
+    )
+    assert trackracerbot.build_entry_lookup_response("niceuser", ["racer"] * 28 + ["NiceUser"]) == (
+        "NiceUser is car #69."
+    )
+    assert trackracerbot.build_entry_lookup_response("@niceuser", ["racer"] * 28 + ["NiceUser"]) == (
+        "NiceUser is car #69."
+    )
+    assert trackracerbot.build_entry_lookup_response("wat", ["NiceUser"]) == (
+        "No entry found for wat."
     )
 
 

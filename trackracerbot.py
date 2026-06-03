@@ -92,6 +92,7 @@ COMMAND_OPEN_ENTRIES = "open_entries"
 COMMAND_CLOSE_ENTRIES = "close_entries"
 COMMAND_CLEAR_ENTRIES = "clear_entries"
 COMMAND_ENTRIES = "entries"
+COMMAND_ENTRY_LOOKUP = "entry_lookup"
 COMMAND_UNKNOWN = "unknown"
 
 COMMANDS_COMMAND = "!commands"
@@ -100,6 +101,7 @@ OPEN_ENTRIES_COMMAND = "!openentries"
 CLOSE_ENTRIES_COMMAND = "!closeentries"
 CLEAR_ENTRIES_COMMAND = "!clearentries"
 ENTRIES_COMMAND = "!entries"
+ENTRY_LOOKUP_COMMAND = "!entry"
 
 ENTRY_RESPONSE_TEMPLATES = (
     "You're in, {author}. You're car #{position}.",
@@ -206,9 +208,18 @@ def is_entries_message(message: str) -> bool:
     return message.lower().startswith(ENTRIES_COMMAND)
 
 
+def is_entry_lookup_message(message: str) -> bool:
+    message_lower = message.lower()
+    return message_lower == ENTRY_LOOKUP_COMMAND or message_lower.startswith(
+        ENTRY_LOOKUP_COMMAND + " "
+    )
+
+
 def classify_message(message: str) -> str:
     if is_commands_message(message):
         return COMMAND_COMMANDS
+    if is_entry_lookup_message(message):
+        return COMMAND_ENTRY_LOOKUP
     if is_entry_message(message):
         return COMMAND_ENTRY
     if is_start_message(message):
@@ -237,6 +248,47 @@ def display_car_number(position: int) -> int:
     if position == 29:
         return 69
     return position
+
+
+def find_entry_by_display_number(entries, display_number: int):
+    for index, name in enumerate(entries, start=1):
+        if display_car_number(index) == display_number:
+            return name, index
+    return None
+
+
+def normalize_entry_lookup_name(search_text: str) -> str:
+    return search_text.strip().lstrip("@").lower()
+
+
+def find_entry_by_name(entries, search_text: str):
+    normalized_search = normalize_entry_lookup_name(search_text)
+    for index, name in enumerate(entries, start=1):
+        if name.lower() == normalized_search:
+            return name, index
+    return None
+
+
+def build_entry_lookup_response(search_text: str, entries) -> str:
+    query = search_text.strip()
+    if not query:
+        return "Usage: !entry {number or name}"
+
+    if query.isdigit():
+        display_number = int(query)
+        result = find_entry_by_display_number(entries, display_number)
+        if result is None:
+            return f"No entry found for car #{display_number}."
+
+        name, _position = result
+        return f"Car #{display_number} is {name}."
+
+    result = find_entry_by_name(entries, query)
+    if result is None:
+        return f"No entry found for {query}."
+
+    name, position = result
+    return f"{name} is car #{display_car_number(position)}."
 
 
 def build_entry_response(author: str, position: int) -> str:
@@ -509,6 +561,10 @@ async def handle_message(message: str, author: str, twitch_message: TwitchMessag
         if is_mod:
             commands_message += " // Mod Commands: !start !openentries !closeentries !clearentries"
         await respond(commands_message)
+
+    elif command == COMMAND_ENTRY_LOOKUP:
+        search_text = message[len(ENTRY_LOOKUP_COMMAND):].strip()
+        await respond(build_entry_lookup_response(search_text, entry_queue))
 
     if command == COMMAND_ENTRY:
         if not registration_open:
