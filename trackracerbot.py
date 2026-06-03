@@ -129,12 +129,40 @@ START_RESPONSE_TEMPLATES = (
     "Race call: {lineup}",
 )
 
+WELCOME_MESSAGE_TEMPLATES = (
+    "[botname] is here. The treadmill is moving, the cars are confused, and entries are open.",
+    "[botname] has arrived at race control. Please submit your tiny machines and oversized confidence.",
+    "[botname] is online. I'm here to collect entries and pretend this is a sanctioned event.",
+    "[botname] has joined the paddock. The track is a treadmill, which already answers several questions.",
+    "[botname] is here. If your car has wheels and a dream, get it entered.",
+    "[botname] has arrived. The racing surface is technically exercise equipment, but we're moving forward.",
+    "[botname] is live. Entries are open for whatever this beautiful motorsport mistake is.",
+    "[botname] just walked into race control. The grid is forming, the treadmill is humming, and nobody is fully prepared.",
+    "[botname] is here. Tonight we find out which vehicle has speed, courage, and poor traction management.",
+    "[botname] has joined. Please line up your tiny race cars and enormous expectations.",
+    "[botname] is now accepting entries. This is not Formula 1, but the paperwork is somehow worse.",
+    "[botname] has arrived at the timing booth. I assume the timing booth is just a guy near a treadmill.",
+    "[botname] is here. The cars are small, the drama is real, and the track refuses to sit still.",
+    "[botname] has entered the chat. I'll be handling entries for the world's least OSHA-approved motorsport.",
+    "[botname] is online. The treadmill has been converted from fitness equipment to destiny equipment.",
+    "[botname] is here. If your vehicle can survive belt speed and public judgment, send it in.",
+    "[botname] has joined race control. We have a moving track, questionable engineering, and a crowd that wants answers.",
+    "[botname] is live. The entries are open and the treadmill appears emotionally ready.",
+    "[botname] has arrived. This is racing, technically, and that is good enough for me.",
+    "[botname] is here. Please register your car before it becomes track debris.",
+    "[botname] has joined. The paddock is open, the belt is ready, and someone's about to learn about friction.",
+    "[botname] is online. I'm collecting entries for tiny cars doing big dumb hero stuff.",
+    "[botname] has arrived. The track moves, the cars cope, and I make announcements like this is normal.",
+    "[botname] is here. Get your entries in before the treadmill achieves sentience.",
+)
+
 REGISTRATION_CLOSED_RESPONSE = (
     "Grid is locked, {author}. Use !entries to check the lineup."
 )
 
 start_response_counter = itertools.count()
 duplicate_entry_response_counter = itertools.count()
+welcome_message_counter = itertools.count()
 
 
 def is_entry_message(message: str) -> bool:
@@ -185,9 +213,10 @@ def classify_message(message: str) -> str:
 
 
 def reset_response_rotation() -> None:
-    global duplicate_entry_response_counter, start_response_counter
+    global duplicate_entry_response_counter, start_response_counter, welcome_message_counter
     duplicate_entry_response_counter = itertools.count()
     start_response_counter = itertools.count()
+    welcome_message_counter = itertools.count()
 
 
 def build_entry_response(author: str, position: int) -> str:
@@ -210,6 +239,28 @@ def build_start_response(lineup_names, rotation_index: int) -> str:
 
 def build_registration_closed_response(author: str) -> str:
     return REGISTRATION_CLOSED_RESPONSE.format(author=author)
+
+
+def build_welcome_message(bot_name: str, rotation_index: int) -> str:
+    template = WELCOME_MESSAGE_TEMPLATES[
+        rotation_index % len(WELCOME_MESSAGE_TEMPLATES)
+    ]
+    return template.replace("[botname]", bot_name or "TrackRacerBot")
+
+
+def build_costreaming_status_message(is_registration_open: bool) -> str:
+    status = "open" if is_registration_open else "closed"
+    return (
+        "Costreaming mode enabled. Reading the chat. "
+        f"Races are {status} currently."
+    )
+
+
+async def send_welcome_message() -> None:
+    await print_everywhere(
+        build_welcome_message(BOT_NAME, next(welcome_message_counter))
+    )
+    await print_everywhere(build_costreaming_status_message(registration_open))
 
 
 def write_registration_state() -> None:
@@ -535,7 +586,7 @@ class Bot(commands.Bot):
         self._message_processor_task = asyncio.create_task(self._process_message_queue())
         print('Message queue processor started')
 
-        # await self.connected_channels[0].send("2BeerBot has connected and is ready for NATMAR. !commands for more info")
+        await send_welcome_message()
 
     async def _process_message_queue(self):
         """Background task that processes queued messages respecting Twitch rate limits."""

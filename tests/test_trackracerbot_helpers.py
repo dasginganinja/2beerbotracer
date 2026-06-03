@@ -1,4 +1,5 @@
 import trackracerbot
+import pytest
 
 
 class FakeAuthor:
@@ -126,6 +127,50 @@ def test_build_start_response_rotates_and_lowercases_lineup_names():
 def test_build_registration_closed_response_points_to_entries_check():
     assert trackracerbot.build_registration_closed_response("CAPSUser") == (
         "Grid is locked, CAPSUser. Use !entries to check the lineup."
+    )
+
+
+def test_build_welcome_message_replaces_bot_name_and_rotates():
+    assert trackracerbot.build_welcome_message("RaceBot", 0) == (
+        "RaceBot is here. The treadmill is moving, the cars are confused, and entries are open."
+    )
+    assert trackracerbot.build_welcome_message("RaceBot", 1) == (
+        "RaceBot has arrived at race control. Please submit your tiny machines and oversized confidence."
+    )
+
+
+def test_build_welcome_message_wraps_template_cycle():
+    template_count = len(trackracerbot.WELCOME_MESSAGE_TEMPLATES)
+
+    assert trackracerbot.build_welcome_message("RaceBot", template_count) == (
+        "RaceBot is here. The treadmill is moving, the cars are confused, and entries are open."
+    )
+
+
+def test_build_costreaming_status_message_reports_registration_state():
+    assert trackracerbot.build_costreaming_status_message(True) == (
+        "Costreaming mode enabled. Reading the chat. Races are open currently."
+    )
+    assert trackracerbot.build_costreaming_status_message(False) == (
+        "Costreaming mode enabled. Reading the chat. Races are closed currently."
+    )
+
+
+@pytest.mark.asyncio
+async def test_send_welcome_message_queues_twitch_chat_message(monkeypatch):
+    queue = trackracerbot.asyncio.Queue()
+    monkeypatch.setattr(trackracerbot, "twitch_message_queue", queue)
+    monkeypatch.setattr(trackracerbot, "twitch_channel_ref", object())
+    monkeypatch.setattr(trackracerbot, "BOT_NAME", "RaceBot")
+    monkeypatch.setattr(trackracerbot, "registration_open", True)
+
+    await trackracerbot.send_welcome_message()
+
+    assert await queue.get() == (
+        "RaceBot is here. The treadmill is moving, the cars are confused, and entries are open."
+    )
+    assert queue.get_nowait() == (
+        "Costreaming mode enabled. Reading the chat. Races are open currently."
     )
 
 
