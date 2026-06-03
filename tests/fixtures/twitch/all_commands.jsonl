@@ -1,5 +1,5 @@
-{"case":"commands_non_mod","source":"twitch","author":"example_user","message":"!commands","classification":"commands","is_mod":false,"bot_outputs":["Available commands: !play !entries"]}
-{"case":"commands_mod","source":"twitch","author":"example_mod","message":"!commands","classification":"commands","is_mod":true,"bot_outputs":["Available commands: !play !entries // Mod Commands: !start !openentries !closeentries !clearentries"]}
+{"case":"commands_non_mod","source":"twitch","author":"example_user","message":"!commands","classification":"commands","is_mod":false,"bot_outputs":["Available commands: !play"]}
+{"case":"commands_mod","source":"twitch","author":"example_mod","message":"!commands","classification":"commands","is_mod":true,"bot_outputs":["Available commands: !play // Mod Commands: !start !openentries !closeentries !clearentries"]}
 {"case":"entries","source":"twitch","author":"example_user","message":"!entries","classification":"entries","is_mod":false,"initial_entries":["racer_one","racer_two"],"bot_outputs":["Race Entries: racer_one, racer_two"]}
 {"case":"race","source":"twitch","author":"race_user","message":"!race","classification":"entry","is_mod":false,"bot_outputs":["You're in, race_user. You're car #1."]}
 {"case":"play","source":"twitch","author":"play_user","message":"!play","classification":"entry","is_mod":false,"bot_outputs":["You're in, play_user. You're car #1."]}

@@ -42,7 +42,7 @@ def test_build_twitch_capture_record_contains_sanitized_fields():
         command=trackracerbot.COMMAND_COMMANDS,
         is_mod=True,
         bot_outputs=[
-            "Available commands: !play !entries // Mod Commands: !start !openentries !closeentries !clearentries"
+            "Available commands: !play // Mod Commands: !start !openentries !closeentries !clearentries"
         ],
         twitch_message=FakeTwitchMessage(is_mod=True),
     )
@@ -54,7 +54,7 @@ def test_build_twitch_capture_record_contains_sanitized_fields():
         "classification": "commands",
         "is_mod": True,
         "bot_outputs": [
-            "Available commands: !play !entries // Mod Commands: !start !openentries !closeentries !clearentries"
+            "Available commands: !play // Mod Commands: !start !openentries !closeentries !clearentries"
         ],
     }
 
@@ -104,7 +104,7 @@ async def test_handle_message_capture_disabled_does_not_write_file(tmp_path, mon
         twitch_message=FakeTwitchMessage(is_mod=False),
     )
 
-    assert outputs == ["Available commands: !play !entries"]
+    assert outputs == ["Available commands: !play"]
     assert not capture_file.exists()
 
 
@@ -127,7 +127,7 @@ async def test_handle_message_capture_enabled_writes_twitch_record(tmp_path, mon
     )
 
     assert outputs == [
-        "Available commands: !play !entries // Mod Commands: !start !openentries !closeentries !clearentries"
+        "Available commands: !play // Mod Commands: !start !openentries !closeentries !clearentries"
     ]
     records = [
         json.loads(line)
@@ -141,7 +141,7 @@ async def test_handle_message_capture_enabled_writes_twitch_record(tmp_path, mon
             "classification": "commands",
             "is_mod": True,
             "bot_outputs": [
-                "Available commands: !play !entries // Mod Commands: !start !openentries !closeentries !clearentries"
+                "Available commands: !play // Mod Commands: !start !openentries !closeentries !clearentries"
             ],
         }
     ]
@@ -177,7 +177,7 @@ async def test_replay_twitch_capture_record_verifies_command_output(monkeypatch,
         "classification": "commands",
         "is_mod": True,
         "bot_outputs": [
-            "Available commands: !play !entries // Mod Commands: !start !openentries !closeentries !clearentries"
+            "Available commands: !play // Mod Commands: !start !openentries !closeentries !clearentries"
         ],
     }
 
@@ -273,7 +273,7 @@ async def test_start_locks_registration_and_blocks_new_entries(monkeypatch, tmp_
 
     assert outputs == [
         "Starting grid locked: racerone, racertwo",
-        "Grid is locked, late_user. Use !entries to check the lineup.",
+        "Grid is locked, late_user.",
     ]
     assert list(trackracerbot.entry_queue) == ["RacerONE", "RACERTwo"]
     trackracerbot.registration_open = True

@@ -124,25 +124,37 @@ def test_build_start_response_rotates_and_lowercases_lineup_names():
     )
 
 
-def test_build_registration_closed_response_points_to_entries_check():
+def test_build_registration_closed_response_does_not_advertise_entries_command():
     assert trackracerbot.build_registration_closed_response("CAPSUser") == (
-        "Grid is locked, CAPSUser. Use !entries to check the lineup."
+        "Grid is locked, CAPSUser."
     )
 
 
 def test_build_welcome_message_replaces_bot_name_and_rotates():
-    assert trackracerbot.build_welcome_message("RaceBot", 0) == (
+    assert trackracerbot.build_welcome_message("RaceBot", 0, True) == (
         "RaceBot is here. The treadmill is moving, the cars are confused, and entries are open."
     )
-    assert trackracerbot.build_welcome_message("RaceBot", 1) == (
+    assert trackracerbot.build_welcome_message("RaceBot", 1, True) == (
         "RaceBot has arrived at race control. Please submit your tiny machines and oversized confidence."
+    )
+
+
+def test_build_welcome_message_respects_closed_registration_state():
+    assert trackracerbot.build_welcome_message("RaceBot", 0, False) == (
+        "RaceBot is here. The treadmill is moving, the cars are confused, and entries are closed."
+    )
+    assert trackracerbot.build_welcome_message("RaceBot", 6, False) == (
+        "RaceBot is live. Entries are closed for whatever this beautiful motorsport mistake is."
+    )
+    assert trackracerbot.build_welcome_message("RaceBot", 17, False) == (
+        "RaceBot is live. The entries are closed and the treadmill appears emotionally ready."
     )
 
 
 def test_build_welcome_message_wraps_template_cycle():
     template_count = len(trackracerbot.WELCOME_MESSAGE_TEMPLATES)
 
-    assert trackracerbot.build_welcome_message("RaceBot", template_count) == (
+    assert trackracerbot.build_welcome_message("RaceBot", template_count, True) == (
         "RaceBot is here. The treadmill is moving, the cars are confused, and entries are open."
     )
 
@@ -159,6 +171,7 @@ def test_build_costreaming_status_message_reports_registration_state():
 @pytest.mark.asyncio
 async def test_send_welcome_message_queues_twitch_chat_message(monkeypatch):
     queue = trackracerbot.asyncio.Queue()
+    trackracerbot.reset_response_rotation()
     monkeypatch.setattr(trackracerbot, "twitch_message_queue", queue)
     monkeypatch.setattr(trackracerbot, "twitch_channel_ref", object())
     monkeypatch.setattr(trackracerbot, "BOT_NAME", "RaceBot")
@@ -171,6 +184,25 @@ async def test_send_welcome_message_queues_twitch_chat_message(monkeypatch):
     )
     assert queue.get_nowait() == (
         "Costreaming mode enabled. Reading the chat. Races are open currently."
+    )
+
+
+@pytest.mark.asyncio
+async def test_send_welcome_message_queues_closed_registration_welcome(monkeypatch):
+    queue = trackracerbot.asyncio.Queue()
+    trackracerbot.reset_response_rotation()
+    monkeypatch.setattr(trackracerbot, "twitch_message_queue", queue)
+    monkeypatch.setattr(trackracerbot, "twitch_channel_ref", object())
+    monkeypatch.setattr(trackracerbot, "BOT_NAME", "RaceBot")
+    monkeypatch.setattr(trackracerbot, "registration_open", False)
+
+    await trackracerbot.send_welcome_message()
+
+    assert await queue.get() == (
+        "RaceBot is here. The treadmill is moving, the cars are confused, and entries are closed."
+    )
+    assert queue.get_nowait() == (
+        "Costreaming mode enabled. Reading the chat. Races are closed currently."
     )
 
 

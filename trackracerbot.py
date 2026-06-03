@@ -130,13 +130,13 @@ START_RESPONSE_TEMPLATES = (
 )
 
 WELCOME_MESSAGE_TEMPLATES = (
-    "[botname] is here. The treadmill is moving, the cars are confused, and entries are open.",
+    "[botname] is here. The treadmill is moving, the cars are confused, and entries are {registration_status}.",
     "[botname] has arrived at race control. Please submit your tiny machines and oversized confidence.",
     "[botname] is online. I'm here to collect entries and pretend this is a sanctioned event.",
     "[botname] has joined the paddock. The track is a treadmill, which already answers several questions.",
     "[botname] is here. If your car has wheels and a dream, get it entered.",
     "[botname] has arrived. The racing surface is technically exercise equipment, but we're moving forward.",
-    "[botname] is live. Entries are open for whatever this beautiful motorsport mistake is.",
+    "[botname] is live. Entries are {registration_status} for whatever this beautiful motorsport mistake is.",
     "[botname] just walked into race control. The grid is forming, the treadmill is humming, and nobody is fully prepared.",
     "[botname] is here. Tonight we find out which vehicle has speed, courage, and poor traction management.",
     "[botname] has joined. Please line up your tiny race cars and enormous expectations.",
@@ -147,7 +147,7 @@ WELCOME_MESSAGE_TEMPLATES = (
     "[botname] is online. The treadmill has been converted from fitness equipment to destiny equipment.",
     "[botname] is here. If your vehicle can survive belt speed and public judgment, send it in.",
     "[botname] has joined race control. We have a moving track, questionable engineering, and a crowd that wants answers.",
-    "[botname] is live. The entries are open and the treadmill appears emotionally ready.",
+    "[botname] is live. The entries are {registration_status} and the treadmill appears emotionally ready.",
     "[botname] has arrived. This is racing, technically, and that is good enough for me.",
     "[botname] is here. Please register your car before it becomes track debris.",
     "[botname] has joined. The paddock is open, the belt is ready, and someone's about to learn about friction.",
@@ -157,7 +157,7 @@ WELCOME_MESSAGE_TEMPLATES = (
 )
 
 REGISTRATION_CLOSED_RESPONSE = (
-    "Grid is locked, {author}. Use !entries to check the lineup."
+    "Grid is locked, {author}."
 )
 
 start_response_counter = itertools.count()
@@ -241,11 +241,16 @@ def build_registration_closed_response(author: str) -> str:
     return REGISTRATION_CLOSED_RESPONSE.format(author=author)
 
 
-def build_welcome_message(bot_name: str, rotation_index: int) -> str:
+def build_welcome_message(
+    bot_name: str, rotation_index: int, is_registration_open: bool
+) -> str:
     template = WELCOME_MESSAGE_TEMPLATES[
         rotation_index % len(WELCOME_MESSAGE_TEMPLATES)
     ]
-    return template.replace("[botname]", bot_name or "TrackRacerBot")
+    registration_status = "open" if is_registration_open else "closed"
+    return template.format(registration_status=registration_status).replace(
+        "[botname]", bot_name or "TrackRacerBot"
+    )
 
 
 def build_costreaming_status_message(is_registration_open: bool) -> str:
@@ -258,7 +263,7 @@ def build_costreaming_status_message(is_registration_open: bool) -> str:
 
 async def send_welcome_message() -> None:
     await print_everywhere(
-        build_welcome_message(BOT_NAME, next(welcome_message_counter))
+        build_welcome_message(BOT_NAME, next(welcome_message_counter), registration_open)
     )
     await print_everywhere(build_costreaming_status_message(registration_open))
 
@@ -425,7 +430,7 @@ async def handle_message(message: str, author: str, twitch_message: TwitchMessag
         await print_everywhere(logmessage, twitch_message=twitch_message)
 
     if command == COMMAND_COMMANDS:
-        commands_message = "Available commands: !play !entries"
+        commands_message = "Available commands: !play"
         if is_mod:
             commands_message += " // Mod Commands: !start !openentries !closeentries !clearentries"
         await respond(commands_message)
