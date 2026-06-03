@@ -106,12 +106,31 @@ def test_build_entry_response_wraps_template_cycle():
     )
 
 
+def test_display_car_number_maps_position_29_to_69():
+    assert trackracerbot.display_car_number(1) == 1
+    assert trackracerbot.display_car_number(28) == 28
+    assert trackracerbot.display_car_number(29) == 69
+    assert trackracerbot.display_car_number(30) == 30
+
+
+def test_build_entry_response_uses_display_car_number():
+    assert trackracerbot.build_entry_response("NiceUser", 29) == (
+        "Registered, NiceUser. You've got car #69."
+    )
+
+
 def test_build_duplicate_entry_response_rotates_and_preserves_author_case():
     assert trackracerbot.build_duplicate_entry_response("CAPSUser", 3, 0) == (
         "You're already in, CAPSUser. You're car #3."
     )
     assert trackracerbot.build_duplicate_entry_response("CAPSUser", 3, 1) == (
         "You're on the grid already, CAPSUser. Car #3 is yours."
+    )
+
+
+def test_build_duplicate_entry_response_uses_display_car_number():
+    assert trackracerbot.build_duplicate_entry_response("NiceUser", 29, 0) == (
+        "You're already in, NiceUser. You're car #69."
     )
 
 

@@ -226,6 +226,27 @@ async def test_entry_response_includes_car_number_and_preserves_author_case(monk
 
 
 @pytest.mark.asyncio
+async def test_twenty_ninth_entry_response_uses_display_car_number(monkeypatch, tmp_path):
+    outputs = []
+
+    async def fake_print_everywhere(logmessage, twitch_message=None):
+        outputs.append(logmessage)
+
+    monkeypatch.setattr(trackracerbot, "print_everywhere", fake_print_everywhere)
+    monkeypatch.setattr(trackracerbot, "CHAT_CAPTURE_FILE", "")
+    monkeypatch.setattr(trackracerbot, "entry_file_abs", str(tmp_path / "entries.txt"))
+    trackracerbot.entry_queue.extend(f"racer_{index}" for index in range(28))
+
+    await trackracerbot.handle_message(
+        "!race",
+        "NiceUser",
+        twitch_message=FakeTwitchMessage(is_mod=False),
+    )
+
+    assert outputs == ["Registered, NiceUser. You've got car #69."]
+
+
+@pytest.mark.asyncio
 async def test_start_response_rotates_and_lowercases_lineup(monkeypatch, tmp_path):
     outputs = []
 

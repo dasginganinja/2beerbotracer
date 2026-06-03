@@ -219,16 +219,22 @@ def reset_response_rotation() -> None:
     welcome_message_counter = itertools.count()
 
 
+def display_car_number(position: int) -> int:
+    if position == 29:
+        return 69
+    return position
+
+
 def build_entry_response(author: str, position: int) -> str:
     template = ENTRY_RESPONSE_TEMPLATES[(position - 1) % len(ENTRY_RESPONSE_TEMPLATES)]
-    return template.format(author=author, position=position)
+    return template.format(author=author, position=display_car_number(position))
 
 
 def build_duplicate_entry_response(author: str, position: int, rotation_index: int) -> str:
     template = DUPLICATE_ENTRY_RESPONSE_TEMPLATES[
         rotation_index % len(DUPLICATE_ENTRY_RESPONSE_TEMPLATES)
     ]
-    return template.format(author=author, position=position)
+    return template.format(author=author, position=display_car_number(position))
 
 
 def build_start_response(lineup_names, rotation_index: int) -> str:
@@ -773,10 +779,7 @@ def entries_json():
 
         # Loop through entries
         for element in entry_queue:
-            number = count
-            # Custom number for 29 per Art's request
-            if number == 29:
-                number = 69
+            number = display_car_number(count)
             name = element
 
             # Add to data list
