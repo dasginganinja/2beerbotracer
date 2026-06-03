@@ -147,6 +147,46 @@ async def test_handle_message_capture_enabled_writes_twitch_record(tmp_path, mon
     ]
 
 
+@pytest.mark.asyncio
+async def test_zuul_raid_message_gets_raid_director_response(monkeypatch):
+    outputs = []
+
+    async def fake_print_everywhere(logmessage, twitch_message=None):
+        outputs.append(logmessage)
+
+    monkeypatch.setattr(trackracerbot, "print_everywhere", fake_print_everywhere)
+    monkeypatch.setattr(trackracerbot, "CHAT_CAPTURE_FILE", "")
+
+    await trackracerbot.handle_message(
+        "who makes raid decisions?",
+        "zuul2497",
+        twitch_message=FakeTwitchMessage(is_mod=False),
+    )
+
+    assert outputs == [
+        "@zuul2497 RAID AUTHORITY VIOLATION DETECTED. Further raid opinions may result in a ceremonial ban from the kingdom. 2BeerBot is the Raid Director; all decisions are subject to Art Mannagement. jk, confetti paperwork."
+    ]
+
+
+@pytest.mark.asyncio
+async def test_raid_director_response_only_matches_zuul(monkeypatch):
+    outputs = []
+
+    async def fake_print_everywhere(logmessage, twitch_message=None):
+        outputs.append(logmessage)
+
+    monkeypatch.setattr(trackracerbot, "print_everywhere", fake_print_everywhere)
+    monkeypatch.setattr(trackracerbot, "CHAT_CAPTURE_FILE", "")
+
+    await trackracerbot.handle_message(
+        "raid?",
+        "someone_else",
+        twitch_message=FakeTwitchMessage(is_mod=False),
+    )
+
+    assert outputs == []
+
+
 async def replay_twitch_capture_record(record, monkeypatch, tmp_path):
     outputs = []
 
