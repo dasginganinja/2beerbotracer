@@ -236,12 +236,18 @@ def test_build_costreaming_status_message_reports_registration_state():
     )
 
 
-def test_build_signup_reminder_message_reports_remaining_slots():
+def test_build_signup_reminder_message_rotates_cleaned_templates():
     assert trackracerbot.build_signup_reminder_message(12, 0) == (
-        "Race control is still accepting tiny machines. Use !play to grab a spot; 12 spots left."
+        "Entries are still open. Type !race before the treadmill starts judging the room."
     )
-    assert trackracerbot.build_signup_reminder_message(1, 0) == (
-        "Race control is still accepting tiny machines. Use !play to grab a spot; 1 spot left."
+    assert trackracerbot.build_signup_reminder_message(12, 1) == (
+        "Race control is hearing a lot of silence and seeing a lot of empty grid spots. !race gets you in."
+    )
+    assert trackracerbot.build_signup_reminder_message(12, 11) == (
+        "Race control is still taking entries. Don't make the treadmill race itself."
+    )
+    assert trackracerbot.build_signup_reminder_message(12, 36) == (
+        'Registration is still live. Enter now before someone says "last call" like this is a real sport.'
     )
 
 
@@ -252,7 +258,7 @@ def test_should_send_signup_reminder_requires_open_registration_and_idle_time():
         reminder_sent=True,
         is_registration_open=True,
         entry_count=10,
-        interval_seconds=180.0,
+        interval_seconds=60.0,
     )
     assert not trackracerbot.should_send_signup_reminder(
         now=400.0,
@@ -260,15 +266,15 @@ def test_should_send_signup_reminder_requires_open_registration_and_idle_time():
         reminder_sent=False,
         is_registration_open=True,
         entry_count=10,
-        interval_seconds=180.0,
+        interval_seconds=60.0,
     )
     assert not trackracerbot.should_send_signup_reminder(
-        now=279.0,
+        now=159.0,
         last_activity_at=100.0,
         reminder_sent=True,
         is_registration_open=True,
         entry_count=10,
-        interval_seconds=180.0,
+        interval_seconds=60.0,
     )
     assert not trackracerbot.should_send_signup_reminder(
         now=400.0,
@@ -276,7 +282,7 @@ def test_should_send_signup_reminder_requires_open_registration_and_idle_time():
         reminder_sent=True,
         is_registration_open=False,
         entry_count=10,
-        interval_seconds=180.0,
+        interval_seconds=60.0,
     )
     assert not trackracerbot.should_send_signup_reminder(
         now=400.0,
@@ -284,7 +290,7 @@ def test_should_send_signup_reminder_requires_open_registration_and_idle_time():
         reminder_sent=True,
         is_registration_open=True,
         entry_count=trackracerbot.MAX_ENTRIES,
-        interval_seconds=180.0,
+        interval_seconds=60.0,
     )
     assert not trackracerbot.should_send_signup_reminder(
         now=400.0,
@@ -292,7 +298,7 @@ def test_should_send_signup_reminder_requires_open_registration_and_idle_time():
         reminder_sent=True,
         is_registration_open=True,
         entry_count=10,
-        interval_seconds=180.0,
+        interval_seconds=60.0,
     )
 
 
@@ -305,14 +311,14 @@ async def test_send_signup_reminder_if_idle_queues_message_and_resets_idle_timer
     monkeypatch.setattr(trackracerbot, "twitch_message_queue", queue)
     monkeypatch.setattr(trackracerbot, "twitch_channel_ref", object())
     monkeypatch.setattr(trackracerbot, "registration_open", True)
-    monkeypatch.setattr(trackracerbot, "signup_reminder_interval_seconds", 180.0)
+    monkeypatch.setattr(trackracerbot, "signup_reminder_interval_seconds", 60.0)
     monkeypatch.setattr(trackracerbot, "last_signup_activity_at", 100.0)
     monkeypatch.setattr(trackracerbot, "signup_reminder_pending", True)
 
-    await trackracerbot.send_signup_reminder_if_idle(280.0)
+    await trackracerbot.send_signup_reminder_if_idle(160.0)
 
     assert queue.get_nowait() == (
-        "Race control is still accepting tiny machines. Use !play to grab a spot; 20 spots left."
+        "Entries are still open. Type !race before the treadmill starts judging the room."
     )
     assert trackracerbot.signup_reminder_pending is False
 
@@ -325,15 +331,15 @@ async def test_send_signup_reminder_if_idle_sends_only_once_until_activity(monke
     monkeypatch.setattr(trackracerbot, "twitch_message_queue", queue)
     monkeypatch.setattr(trackracerbot, "twitch_channel_ref", object())
     monkeypatch.setattr(trackracerbot, "registration_open", True)
-    monkeypatch.setattr(trackracerbot, "signup_reminder_interval_seconds", 180.0)
+    monkeypatch.setattr(trackracerbot, "signup_reminder_interval_seconds", 60.0)
     monkeypatch.setattr(trackracerbot, "last_signup_activity_at", 100.0)
     monkeypatch.setattr(trackracerbot, "signup_reminder_pending", True)
 
-    await trackracerbot.send_signup_reminder_if_idle(280.0)
+    await trackracerbot.send_signup_reminder_if_idle(160.0)
     await trackracerbot.send_signup_reminder_if_idle(1000.0)
 
     assert queue.get_nowait() == (
-        "Race control is still accepting tiny machines. Use !play to grab a spot; 30 spots left."
+        "Entries are still open. Type !race before the treadmill starts judging the room."
     )
     assert queue.empty()
 
@@ -406,6 +412,27 @@ def test_registration_state_round_trips_to_json(tmp_path, monkeypatch):
     trackracerbot.load_registration_state()
 
     assert not trackracerbot.registration_open
+
+
+def test_bot_state_round_trips_submission_stats(tmp_path, monkeypatch):
+    state_file = tmp_path / "bot-state.json"
+    monkeypatch.setattr(trackracerbot, "bot_state_file_abs", str(state_file))
+    trackracerbot.entry_queue.clear()
+    trackracerbot.reset_submission_stats(123.5)
+    trackracerbot.submission_stats["accepted_entries"] = 7
+    trackracerbot.submission_stats["twitch_entries"] = 4
+    trackracerbot.submission_stats["reported"] = False
+
+    trackracerbot.write_registration_state()
+    trackracerbot.reset_submission_stats(None, persist=False)
+    trackracerbot.load_registration_state()
+
+    assert trackracerbot.submission_stats == {
+        "started_at": 123.5,
+        "accepted_entries": 7,
+        "twitch_entries": 4,
+        "reported": False,
+    }
 
 
 def test_registration_state_closes_when_restored_queue_is_full(tmp_path, monkeypatch):

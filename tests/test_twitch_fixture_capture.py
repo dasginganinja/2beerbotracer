@@ -737,6 +737,57 @@ async def test_full_entry_list_reports_elapsed_time_and_twitch_percentage(monkey
 
 
 @pytest.mark.asyncio
+async def test_submission_stats_survive_restart_mid_signups(monkeypatch, tmp_path):
+    outputs = []
+    current_time = 100.0
+    state_file = tmp_path / "bot-state.json"
+
+    def fake_monotonic():
+        return current_time
+
+    async def fake_print_everywhere(logmessage, twitch_message=None):
+        outputs.append(logmessage)
+
+    monkeypatch.setattr(trackracerbot, "print_everywhere", fake_print_everywhere)
+    monkeypatch.setattr(trackracerbot, "CHAT_CAPTURE_FILE", "")
+    monkeypatch.setattr(trackracerbot, "entry_file_abs", str(tmp_path / "entries.txt"))
+    monkeypatch.setattr(trackracerbot, "bot_state_file_abs", str(state_file))
+    monkeypatch.setattr(trackracerbot.time, "monotonic", fake_monotonic)
+
+    await trackracerbot.handle_message(
+        "!clearentries",
+        "example_mod",
+        twitch_message=FakeTwitchMessage(is_mod=True),
+    )
+
+    current_time = 130.0
+    for index in range(10):
+        await trackracerbot.handle_message(
+            "!race",
+            f"twitch_user_{index}",
+            twitch_message=FakeTwitchMessage(is_mod=False),
+        )
+
+    restored_entries = list(trackracerbot.entry_queue)
+    trackracerbot.reset_submission_stats(None, persist=False)
+    trackracerbot.entry_queue.clear()
+    trackracerbot.entry_queue.extend(restored_entries)
+    trackracerbot.load_registration_state()
+
+    current_time = 280.0
+    for index in range(20):
+        await trackracerbot.handle_message(
+            "!race",
+            f"youtube_user_{index}",
+            youtube_message={"authorDetails": {"isChatOwner": False, "isChatModerator": False}},
+        )
+
+    assert outputs[-1] == (
+        "Entry list filled in 3m 0s. Twitch entries: 33.3% (10/30)."
+    )
+
+
+@pytest.mark.asyncio
 async def test_submission_stats_do_not_count_duplicates_or_report_twice(monkeypatch, tmp_path):
     outputs = []
 

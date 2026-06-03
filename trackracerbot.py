@@ -69,7 +69,7 @@ twitch_channel_ref = None  # Will be set when bot is ready
 # We'll be conservative and send 1 message per 1.5 seconds (20 per 30s)
 MESSAGE_RATE_LIMIT = 1.5  # seconds between messages
 signup_reminder_interval_seconds = float(
-    os.getenv("SIGNUP_REMINDER_INTERVAL_SECONDS", "180")
+    os.getenv("SIGNUP_REMINDER_INTERVAL_SECONDS", "60")
 )
 last_signup_activity_at = None
 signup_reminder_pending = True
@@ -126,9 +126,100 @@ DUPLICATE_ENTRY_RESPONSE_TEMPLATES = (
 )
 
 SIGNUP_REMINDER_TEMPLATES = (
-    "Race control is still accepting tiny machines. Use !play to grab a spot; {remaining_slots} {spot_word} left.",
-    "The grid still has room. Use !play if your car wants treadmill glory; {remaining_slots} {spot_word} left.",
-    "Signups are still open and the belt is waiting. Use !play to enter; {remaining_slots} {spot_word} left.",
+    "Entries are still open. Type !race before the treadmill starts judging the room.",
+    "Race control is hearing a lot of silence and seeing a lot of empty grid spots. !race gets you in.",
+    "The belt is warm, the grid is lonely, and your car has not yet made a terrible decision. Type !race.",
+    "This is your reminder that !race exists, and so does glory on moving rubber.",
+    "Registration remains open. The treadmill is patient, but only because it has no concept of mercy.",
+    "The race queue is still accepting brave little machines. Type !race and become part of the incident.",
+    "We have open spots on the grid and a treadmill with nothing better to do. !race to enter.",
+    "The silence in registration is suspicious. Somebody type !race before we start inspecting setups.",
+    "Entries are open. This is not the time to be responsible.",
+    "The grid has room. The belt has attitude. Type !race.",
+    "Somewhere out there is a car that deserves to fly off a treadmill. Type !race and nominate it.",
+    "Race control is still taking entries. Don't make the treadmill race itself.",
+    "The list is open, the track is moving, and the excuses are still free. !race to join.",
+    "There are empty grid slots, which means several of you are still pretending to have dignity.",
+    "Type !race to enter. Or don't, and let someone else become treadmill folklore.",
+    "Registration is still open. The fastest way to join is !race. The funniest way is also !race.",
+    "We are moments away from organized belt-based nonsense. !race gets you on the list.",
+    "The treadmill has been repurposed and it demands competitors. Type !race.",
+    "There is still time to enter before physics starts taking attendance.",
+    "Race control has detected a lull. This is usually where someone makes a bad but entertaining choice.",
+    "The entry list is looking a little too safe. Type !race and fix that.",
+    "The grid is not full yet. That means your tiny car still has a chance to disappoint everyone.",
+    "Registration remains open for cars, dreams, and suspicious engineering. !race to enter.",
+    "The belt is idle enough to think. That is dangerous. Type !race.",
+    "Open entries, open track, open question: who's brave enough to get thrown into treadmill history?",
+    "This is the part where the quiet people suddenly become competitors. Type !race.",
+    "The treadmill is warmed up. Your excuses can warm up later. !race to join.",
+    "The field needs more victims. Respectfully. !race.",
+    "Race control is accepting entries and emotional support vehicles. Type !race.",
+    "There is still room on the list for one more bad idea with wheels.",
+    "The grid is open. The treadmill is hungry. Chat is suspiciously quiet.",
+    "Type !race now and give the announcer something irresponsible to say.",
+    "We have empty slots and a moving track. This problem solves itself when you type !race.",
+    "The entry window is still open. Do not let the responsible people win.",
+    "This lull has been reviewed by race control and declared unacceptable. !race.",
+    "The belt is standing by for competitors. Or sacrifices. The paperwork is unclear.",
+    'Registration is still live. Enter now before someone says "last call" like this is a real sport.',
+    "The race list has space. The treadmill has opinions. !race to join.",
+    "This is your chance to become a name on a very strange leaderboard.",
+    "Race control would like to remind chat that watching is safer, but entering is funnier.",
+    "The grid could use more chaos. Type !race and bring your own problem.",
+    "Open registration continues. Please enter before the treadmill gets bored and starts picking favorites.",
+    "Some of you are lurking like your car wouldn't immediately become content. Type !race.",
+    "The belt is ready. The bot is ready. The question is whether chat has courage.",
+    "Entries remain open. This is treadmill racing, not jury duty. Participation is encouraged.",
+    "Type !race to join the grid and receive absolutely no guarantee of dignity.",
+    "The race queue has room for more tiny cars and bigger mistakes.",
+    "The treadmill has not yet claimed enough dreams. !race to assist.",
+    "Registration is still open. The only wrong move is pretending you're above this.",
+    "The grid needs more names. The belt needs more business. Type !race.",
+    "This is a friendly reminder from race control: !race puts you in the madness.",
+    "The entry list is open, and so is the possibility of becoming a cautionary tale.",
+    "Quiet chat means empty grid. Empty grid means the treadmill wins. Type !race.",
+    "The belt is spinning spiritually, even if not physically. It wants competitors.",
+    "Type !race and let your car experience the most questionable racetrack in the room.",
+    "Registration remains open for all brave, doomed, or overconfident entries.",
+    "The list is still open. The treadmill has been staring at us for too long.",
+    "Race control has noticed several potential cowards in the stands. !race may correct this.",
+    "This is the awkward silence before someone enters and immediately regrets it.",
+    "The grid is open. The drama is under capacity. Type !race.",
+    "Entries are still open. Somebody give this treadmill a reason to believe.",
+    "The queue needs more names before we can call this a proper disaster.",
+    "Type !race and join the only race where the track does cardio for you.",
+    "The entry window remains open. Don't let the belt sit there unemployed.",
+    "Race control is requesting more cars for scientific and comedic purposes.",
+    "The grid is not full, which means glory is still available at a questionable discount.",
+    "Type !race before someone else takes your spot in treadmill history.",
+    "The treadmill is accepting challengers. Chat is accepting peer pressure.",
+    "Open slots remain. That is not a warning. That is an invitation.",
+    "The race list is looking polite. We need less polite. Type !race.",
+    "Registration is open and the belt has no respect for hesitation.",
+    "This is your low-pressure opportunity to make a high-speed mistake.",
+    "The treadmill is ready to turn someone's setup into a lesson. !race to volunteer.",
+    "Race control is still awake, somehow. Type !race and make it worth it.",
+    "The grid needs more contenders, pretenders, and rolling question marks.",
+    "Entries are open. Become part of the show before the show becomes part of you.",
+    "The silence is strong, but the lure of tiny car chaos is stronger. !race.",
+    "Type !race and find out if your car is fast, stable, or decorative.",
+    "Registration is still open. The belt waits for no one, except currently everyone.",
+    "The track is ready. The bot is nagging. The grid has room.",
+    "Somebody type !race before we start interviewing the treadmill.",
+    "The entry list has vacancies and the announcer has dangerous levels of free time.",
+    "This lull brought to you by hesitation. End it with !race.",
+    "Race control is still taking entries. Pride is optional. Wheels are preferred.",
+    "The treadmill has been converted into a racetrack and somehow you're still not entered.",
+    "Type !race and become part of a motorsport format your insurance agent would not understand.",
+    "Open grid spots remain for anyone brave enough to challenge moving rubber.",
+    "The belt is bored, the bot is watching, and chat has unfinished business.",
+    "Registration is still live. Enter now and let the treadmill sort out the details.",
+    "The list needs more names before we can properly blame physics.",
+    "Type !race. Worst case, you become content. Best case, you also become content.",
+    "Race control is asking nicely before it starts asking like a disappointed crew chief.",
+    "Entries are still open. This is the part where legends, cowards, and toy cars separate themselves.",
+    "The grid is hungry. The belt is mean. The command is !race.",
 )
 
 START_RESPONSE_TEMPLATES = (
@@ -417,7 +508,13 @@ def write_registration_state() -> None:
             os.makedirs(state_dir, exist_ok=True)
 
         with open(bot_state_file_abs, "w", encoding="utf-8") as state_file:
-            json.dump({"registration_open": registration_open}, state_file)
+            json.dump(
+                {
+                    "registration_open": registration_open,
+                    "submission_stats": submission_stats,
+                },
+                state_file,
+            )
     except OSError as e:
         print(f"Could not write bot state: {e}")
 
@@ -442,6 +539,18 @@ def load_registration_state() -> None:
             bool(state.get("registration_open", len(entry_queue) == 0))
             and len(entry_queue) < MAX_ENTRIES
         )
+        loaded_submission_stats = state.get("submission_stats", {})
+        if isinstance(loaded_submission_stats, dict):
+            submission_stats["started_at"] = loaded_submission_stats.get("started_at")
+            submission_stats["accepted_entries"] = int(
+                loaded_submission_stats.get("accepted_entries", 0)
+            )
+            submission_stats["twitch_entries"] = int(
+                loaded_submission_stats.get("twitch_entries", 0)
+            )
+            submission_stats["reported"] = bool(
+                loaded_submission_stats.get("reported", False)
+            )
     except (OSError, ValueError, TypeError) as e:
         print(f"Could not read bot state: {e}")
         registration_open = len(entry_queue) == 0
@@ -499,11 +608,13 @@ def write_chat_capture_record(record: dict) -> None:
         print(f"Could not write chat capture record: {e}")
 
 
-def reset_submission_stats(started_at: float = None) -> None:
+def reset_submission_stats(started_at: float = None, persist: bool = True) -> None:
     submission_stats["started_at"] = started_at
     submission_stats["accepted_entries"] = 0
     submission_stats["twitch_entries"] = 0
     submission_stats["reported"] = False
+    if persist:
+        write_registration_state()
 
 
 def format_elapsed_time(seconds: float) -> str:
@@ -526,6 +637,7 @@ def record_submission_entry(twitch_message: TwitchMessage = None) -> None:
     submission_stats["accepted_entries"] += 1
     if twitch_message is not None:
         submission_stats["twitch_entries"] += 1
+    write_registration_state()
 
 
 def build_submission_stats_message(finished_at: float) -> str:
@@ -638,6 +750,7 @@ async def handle_message(message: str, author: str, twitch_message: TwitchMessag
             if should_report_submission_stats():
                 await respond(build_submission_stats_message(time.monotonic()))
                 submission_stats["reported"] = True
+                write_registration_state()
         else:
             await respond("The list is full, " + author + ". Better luck next race!")
 
