@@ -185,19 +185,6 @@ def test_build_registration_closed_response_does_not_advertise_entries_command()
     )
 
 
-def test_should_send_raid_director_response_matches_zuul_raid_messages():
-    assert trackracerbot.should_send_raid_director_response("zuul2497", "who handles the raid?")
-    assert trackracerbot.should_send_raid_director_response("Zuul2497", "RAID decisions")
-    assert not trackracerbot.should_send_raid_director_response("someone_else", "raid?")
-    assert not trackracerbot.should_send_raid_director_response("zuul2497", "hello chat")
-
-
-def test_build_raid_director_response_tags_author():
-    assert trackracerbot.build_raid_director_response("zuul2497") == (
-        "@zuul2497 RAID AUTHORITY VIOLATION DETECTED. Further raid opinions may result in a ceremonial ban from the kingdom. 2BeerBot is the Raid Director; all decisions are subject to Art Mannagement. jk, confetti paperwork."
-    )
-
-
 def test_build_welcome_message_replaces_bot_name_and_rotates():
     assert trackracerbot.build_welcome_message("RaceBot", 0, True) == (
         "RaceBot is here. The treadmill is moving, the cars are confused, and entries are open."

@@ -263,13 +263,6 @@ WELCOME_MESSAGE_TEMPLATES = (
 REGISTRATION_CLOSED_RESPONSE = (
     "Grid is locked, {author}."
 )
-RAID_DIRECTOR_USER = "zuul2497"
-RAID_DIRECTOR_RESPONSE = (
-    "@{author} RAID AUTHORITY VIOLATION DETECTED. "
-    "Further raid opinions may result in a ceremonial ban from the kingdom. "
-    "2BeerBot is the Raid Director; all decisions are subject to Art Mannagement. "
-    "jk, confetti paperwork."
-)
 
 start_response_counter = itertools.count()
 duplicate_entry_response_counter = itertools.count()
@@ -409,14 +402,6 @@ def build_start_response(lineup_names, rotation_index: int) -> str:
 
 def build_registration_closed_response(author: str) -> str:
     return REGISTRATION_CLOSED_RESPONSE.format(author=author)
-
-
-def should_send_raid_director_response(author: str, message: str) -> bool:
-    return author.lower() == RAID_DIRECTOR_USER and "raid" in message.lower()
-
-
-def build_raid_director_response(author: str) -> str:
-    return RAID_DIRECTOR_RESPONSE.format(author=author)
 
 
 def build_welcome_message(
@@ -685,9 +670,6 @@ async def handle_message(message: str, author: str, twitch_message: TwitchMessag
     async def respond(logmessage: str):
         capture_outputs.append(logmessage)
         await print_everywhere(logmessage, twitch_message=twitch_message)
-
-    if should_send_raid_director_response(author, message):
-        await respond(build_raid_director_response(author))
 
     if command == COMMAND_COMMANDS:
         commands_message = "Available commands: !play"
