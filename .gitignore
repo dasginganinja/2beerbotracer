@@ -3,6 +3,7 @@
 .venv/
 .venv-codex/
 /entries.txt
+/bot-state.json
 __pycache__/
 *.py[cod]
 debug/*.jsonl

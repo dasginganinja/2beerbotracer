@@ -44,6 +44,10 @@ def test_command_detection_helpers_accept_current_prefixes_case_insensitively():
     assert trackracerbot.is_commands_message("!COMMANDS please")
     assert trackracerbot.is_start_message("!start")
     assert trackracerbot.is_start_message("!START race")
+    assert trackracerbot.is_open_entries_message("!openentries")
+    assert trackracerbot.is_open_entries_message("!OPENENTRIES now")
+    assert trackracerbot.is_close_entries_message("!closeentries")
+    assert trackracerbot.is_close_entries_message("!CLOSEENTRIES now")
     assert trackracerbot.is_clear_entries_message("!clearentries")
     assert trackracerbot.is_clear_entries_message("!CLEARENTRIES now")
     assert trackracerbot.is_entries_message("!entries")
@@ -55,6 +59,10 @@ def test_command_detection_helpers_reject_non_matching_messages():
     assert not trackracerbot.is_commands_message("hello !commands")
     assert not trackracerbot.is_start_message("start")
     assert not trackracerbot.is_start_message("hello !start")
+    assert not trackracerbot.is_open_entries_message("openentries")
+    assert not trackracerbot.is_open_entries_message("hello !openentries")
+    assert not trackracerbot.is_close_entries_message("closeentries")
+    assert not trackracerbot.is_close_entries_message("hello !closeentries")
     assert not trackracerbot.is_clear_entries_message("clearentries")
     assert not trackracerbot.is_clear_entries_message("hello !clearentries")
     assert not trackracerbot.is_entries_message("entries")
@@ -66,6 +74,8 @@ def test_classify_message_returns_expected_command_labels():
     assert trackracerbot.classify_message("!race") == trackracerbot.COMMAND_ENTRY
     assert trackracerbot.classify_message("artmannJudy") == trackracerbot.COMMAND_ENTRY
     assert trackracerbot.classify_message("!start") == trackracerbot.COMMAND_START
+    assert trackracerbot.classify_message("!openentries") == trackracerbot.COMMAND_OPEN_ENTRIES
+    assert trackracerbot.classify_message("!closeentries") == trackracerbot.COMMAND_CLOSE_ENTRIES
     assert trackracerbot.classify_message("!clearentries") == trackracerbot.COMMAND_CLEAR_ENTRIES
     assert trackracerbot.classify_message("!entries") == trackracerbot.COMMAND_ENTRIES
     assert trackracerbot.classify_message("just chatting") == trackracerbot.COMMAND_UNKNOWN
@@ -76,6 +86,79 @@ def test_classify_message_preserves_case_and_prefix_behavior():
     assert trackracerbot.classify_message("!PLAY please") == trackracerbot.COMMAND_ENTRY
     assert trackracerbot.classify_message("x100pr3Hndoclap52 extra words") == trackracerbot.COMMAND_ENTRY
     assert trackracerbot.classify_message("hello artmannJudy") == trackracerbot.COMMAND_UNKNOWN
+
+
+def test_build_entry_response_rotates_and_preserves_author_case():
+    assert trackracerbot.build_entry_response("CAPSUser", 1) == (
+        "You're in, CAPSUser. You're car #1."
+    )
+    assert trackracerbot.build_entry_response("AnotherUSER", 2) == (
+        "Locked in, AnotherUSER. You're car #2."
+    )
+
+
+def test_build_entry_response_wraps_template_cycle():
+    template_count = len(trackracerbot.ENTRY_RESPONSE_TEMPLATES)
+
+    assert trackracerbot.build_entry_response("CycleUSER", template_count + 1) == (
+        "You're in, CycleUSER. You're car #9."
+    )
+
+
+def test_build_duplicate_entry_response_rotates_and_preserves_author_case():
+    assert trackracerbot.build_duplicate_entry_response("CAPSUser", 3, 0) == (
+        "You're already in, CAPSUser. You're car #3."
+    )
+    assert trackracerbot.build_duplicate_entry_response("CAPSUser", 3, 1) == (
+        "You're on the grid already, CAPSUser. Car #3 is yours."
+    )
+
+
+def test_build_start_response_rotates_and_lowercases_lineup_names():
+    assert trackracerbot.build_start_response(["RacerONE", "RACERTwo"], 0) == (
+        "Starting grid locked: racerone, racertwo"
+    )
+    assert trackracerbot.build_start_response(["RacerONE", "RACERTwo"], 1) == (
+        "Rolling out with: racerone, racertwo"
+    )
+
+
+def test_build_registration_closed_response_points_to_entries_check():
+    assert trackracerbot.build_registration_closed_response("CAPSUser") == (
+        "Grid is locked, CAPSUser. Use !entries to check the lineup."
+    )
+
+
+def test_missing_registration_state_infers_open_when_queue_is_empty(tmp_path, monkeypatch):
+    state_file = tmp_path / "bot-state.json"
+    monkeypatch.setattr(trackracerbot, "bot_state_file_abs", str(state_file))
+    trackracerbot.entry_queue.clear()
+
+    trackracerbot.load_registration_state()
+
+    assert trackracerbot.registration_open
+
+
+def test_missing_registration_state_infers_closed_when_queue_has_restored_entries(tmp_path, monkeypatch):
+    state_file = tmp_path / "bot-state.json"
+    monkeypatch.setattr(trackracerbot, "bot_state_file_abs", str(state_file))
+    trackracerbot.entry_queue.clear()
+    trackracerbot.entry_queue.extend(["racer_one"])
+
+    trackracerbot.load_registration_state()
+
+    assert not trackracerbot.registration_open
+
+
+def test_registration_state_round_trips_to_json(tmp_path, monkeypatch):
+    state_file = tmp_path / "bot-state.json"
+    monkeypatch.setattr(trackracerbot, "bot_state_file_abs", str(state_file))
+
+    trackracerbot.set_registration_open(False)
+    trackracerbot.registration_open = True
+    trackracerbot.load_registration_state()
+
+    assert not trackracerbot.registration_open
 
 
 def test_is_moderator_message_source_detects_twitch_mods():

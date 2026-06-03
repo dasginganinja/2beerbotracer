@@ -44,9 +44,14 @@ if entry_file is None:
 
 # Set the absolute path to the savefile
 entry_file_abs = os.path.abspath(entry_file)
+bot_state_file = os.getenv("BOT_STATE_FILE")
+if bot_state_file is None:
+    bot_state_file = os.path.join(os.path.dirname(entry_file_abs), "bot-state.json")
+bot_state_file_abs = os.path.abspath(bot_state_file)
 
 # Set maximum number of entries
 MAX_ENTRIES = 30
+registration_open = True
 
 submission_stats = {
     "started_at": None,
@@ -78,14 +83,58 @@ ENTRY_EMOTE_PREFIXES = (
 COMMAND_COMMANDS = "commands"
 COMMAND_ENTRY = "entry"
 COMMAND_START = "start"
+COMMAND_OPEN_ENTRIES = "open_entries"
+COMMAND_CLOSE_ENTRIES = "close_entries"
 COMMAND_CLEAR_ENTRIES = "clear_entries"
 COMMAND_ENTRIES = "entries"
 COMMAND_UNKNOWN = "unknown"
 
 COMMANDS_COMMAND = "!commands"
 START_COMMAND = "!start"
+OPEN_ENTRIES_COMMAND = "!openentries"
+CLOSE_ENTRIES_COMMAND = "!closeentries"
 CLEAR_ENTRIES_COMMAND = "!clearentries"
 ENTRIES_COMMAND = "!entries"
+
+ENTRY_RESPONSE_TEMPLATES = (
+    "You're in, {author}. You're car #{position}.",
+    "Locked in, {author}. You're car #{position}.",
+    "Added to the grid, {author}. You're car #{position}.",
+    "You're on the list, {author}. Car #{position} is yours.",
+    "Registered, {author}. You've got car #{position}.",
+    "Welcome to the queue, {author}. You're car #{position}.",
+    "Got you, {author}. You're in car #{position}.",
+    "Grid slot claimed, {author}. You're car #{position}.",
+)
+
+DUPLICATE_ENTRY_RESPONSE_TEMPLATES = (
+    "You're already in, {author}. You're car #{position}.",
+    "You're on the grid already, {author}. Car #{position} is yours.",
+    "Hold tight, {author}. You're already car #{position}.",
+    "Already got you, {author}. You're in car #{position}.",
+    "No need to re-enter, {author}. You're car #{position}.",
+    "You're still locked in, {author}. Car #{position} is set.",
+    "Duplicate ignored, {author}. You're already car #{position}.",
+    "You're covered, {author}. Car #{position} is yours.",
+)
+
+START_RESPONSE_TEMPLATES = (
+    "Starting grid locked: {lineup}",
+    "Rolling out with: {lineup}",
+    "Race lineup is set: {lineup}",
+    "Sending these racers: {lineup}",
+    "On the line: {lineup}",
+    "Next race is ready for: {lineup}",
+    "Grid is live: {lineup}",
+    "Race call: {lineup}",
+)
+
+REGISTRATION_CLOSED_RESPONSE = (
+    "Grid is locked, {author}. Use !entries to check the lineup."
+)
+
+start_response_counter = itertools.count()
+duplicate_entry_response_counter = itertools.count()
 
 
 def is_entry_message(message: str) -> bool:
@@ -99,6 +148,14 @@ def is_commands_message(message: str) -> bool:
 
 def is_start_message(message: str) -> bool:
     return message.lower().startswith(START_COMMAND)
+
+
+def is_open_entries_message(message: str) -> bool:
+    return message.lower().startswith(OPEN_ENTRIES_COMMAND)
+
+
+def is_close_entries_message(message: str) -> bool:
+    return message.lower().startswith(CLOSE_ENTRIES_COMMAND)
 
 
 def is_clear_entries_message(message: str) -> bool:
@@ -116,11 +173,77 @@ def classify_message(message: str) -> str:
         return COMMAND_ENTRY
     if is_start_message(message):
         return COMMAND_START
+    if is_open_entries_message(message):
+        return COMMAND_OPEN_ENTRIES
+    if is_close_entries_message(message):
+        return COMMAND_CLOSE_ENTRIES
     if is_clear_entries_message(message):
         return COMMAND_CLEAR_ENTRIES
     if is_entries_message(message):
         return COMMAND_ENTRIES
     return COMMAND_UNKNOWN
+
+
+def reset_response_rotation() -> None:
+    global duplicate_entry_response_counter, start_response_counter
+    duplicate_entry_response_counter = itertools.count()
+    start_response_counter = itertools.count()
+
+
+def build_entry_response(author: str, position: int) -> str:
+    template = ENTRY_RESPONSE_TEMPLATES[(position - 1) % len(ENTRY_RESPONSE_TEMPLATES)]
+    return template.format(author=author, position=position)
+
+
+def build_duplicate_entry_response(author: str, position: int, rotation_index: int) -> str:
+    template = DUPLICATE_ENTRY_RESPONSE_TEMPLATES[
+        rotation_index % len(DUPLICATE_ENTRY_RESPONSE_TEMPLATES)
+    ]
+    return template.format(author=author, position=position)
+
+
+def build_start_response(lineup_names, rotation_index: int) -> str:
+    lineup = ", ".join(name.lower() for name in lineup_names)
+    template = START_RESPONSE_TEMPLATES[rotation_index % len(START_RESPONSE_TEMPLATES)]
+    return template.format(lineup=lineup)
+
+
+def build_registration_closed_response(author: str) -> str:
+    return REGISTRATION_CLOSED_RESPONSE.format(author=author)
+
+
+def write_registration_state() -> None:
+    try:
+        state_dir = os.path.dirname(bot_state_file_abs)
+        if state_dir:
+            os.makedirs(state_dir, exist_ok=True)
+
+        with open(bot_state_file_abs, "w", encoding="utf-8") as state_file:
+            json.dump({"registration_open": registration_open}, state_file)
+    except OSError as e:
+        print(f"Could not write bot state: {e}")
+
+
+def set_registration_open(is_open: bool) -> None:
+    global registration_open
+    registration_open = is_open
+    write_registration_state()
+
+
+def load_registration_state() -> None:
+    global registration_open
+
+    if not os.path.exists(bot_state_file_abs):
+        registration_open = len(entry_queue) == 0
+        return
+
+    try:
+        with open(bot_state_file_abs, encoding="utf-8") as state_file:
+            state = json.load(state_file)
+        registration_open = bool(state.get("registration_open", len(entry_queue) == 0))
+    except (OSError, ValueError, TypeError) as e:
+        print(f"Could not read bot state: {e}")
+        registration_open = len(entry_queue) == 0
 
 
 def is_moderator_message_source(twitch_message: TwitchMessage = None, youtube_message=None) -> bool:
@@ -253,12 +376,33 @@ async def handle_message(message: str, author: str, twitch_message: TwitchMessag
     if command == COMMAND_COMMANDS:
         commands_message = "Available commands: !play !entries"
         if is_mod:
-            commands_message += " // Mod Commands: !start !clearentries"
+            commands_message += " // Mod Commands: !start !openentries !closeentries !clearentries"
         await respond(commands_message)
 
     if command == COMMAND_ENTRY:
+        if not registration_open:
+            await respond(build_registration_closed_response(author))
+            write_chat_capture_record(
+                build_twitch_capture_record(
+                    message=message,
+                    author=author,
+                    command=command,
+                    is_mod=is_mod,
+                    bot_outputs=capture_outputs,
+                    twitch_message=twitch_message,
+                )
+            )
+            return
+
         if author in entry_queue:
-            await respond("You have already entered, " + author + ". Nice try :)")
+            position = list(entry_queue).index(author) + 1
+            await respond(
+                build_duplicate_entry_response(
+                    author,
+                    position,
+                    next(duplicate_entry_response_counter),
+                )
+            )
             write_chat_capture_record(
                 build_twitch_capture_record(
                     message=message,
@@ -281,7 +425,7 @@ async def handle_message(message: str, author: str, twitch_message: TwitchMessag
 
             record_submission_entry(twitch_message=twitch_message)
 
-            await respond("You have been added " + author)
+            await respond(build_entry_response(author, len(entry_queue)))
             if should_report_submission_stats():
                 await respond(build_submission_stats_message(time.monotonic()))
                 submission_stats["reported"] = True
@@ -289,11 +433,22 @@ async def handle_message(message: str, author: str, twitch_message: TwitchMessag
             await respond("The list is full, " + author + ". Better luck next race!")
 
     elif command == COMMAND_START and is_mod:
-        await respond("Starting for " + ", ".join(itertools.islice(entry_queue,0,MAX_ENTRIES)))
+        lineup_names = list(itertools.islice(entry_queue, 0, MAX_ENTRIES))
+        await respond(build_start_response(lineup_names, next(start_response_counter)))
+        set_registration_open(False)
+
+    elif command == COMMAND_OPEN_ENTRIES and is_mod:
+        set_registration_open(True)
+        await respond("Entries are open.")
+
+    elif command == COMMAND_CLOSE_ENTRIES and is_mod:
+        set_registration_open(False)
+        await respond("entries closed")
                 
     elif command == COMMAND_CLEAR_ENTRIES and is_mod:
         # Clear the queue
         clear_queue()
+        set_registration_open(True)
         reset_submission_stats(time.monotonic())
         await respond("All entries have been cleared.")
 
@@ -469,6 +624,8 @@ if os.path.exists(entry_file_abs):
             if line != "":
                 # Add the line to the deque
                 entry_queue.append(line)
+
+load_registration_state()
 
 def listen_to_twitch():
     loop = asyncio.new_event_loop()

@@ -20,9 +20,13 @@ class FakeTwitchMessage:
 def clear_entry_queue():
     trackracerbot.entry_queue.clear()
     trackracerbot.reset_submission_stats(None)
+    trackracerbot.reset_response_rotation()
+    trackracerbot.registration_open = True
     yield
     trackracerbot.entry_queue.clear()
     trackracerbot.reset_submission_stats(None)
+    trackracerbot.reset_response_rotation()
+    trackracerbot.registration_open = True
 
 
 def test_chat_capture_is_disabled_when_file_path_is_empty(monkeypatch):
@@ -38,7 +42,7 @@ def test_build_twitch_capture_record_contains_sanitized_fields():
         command=trackracerbot.COMMAND_COMMANDS,
         is_mod=True,
         bot_outputs=[
-            "Available commands: !play !entries // Mod Commands: !start !clearentries"
+            "Available commands: !play !entries // Mod Commands: !start !openentries !closeentries !clearentries"
         ],
         twitch_message=FakeTwitchMessage(is_mod=True),
     )
@@ -50,7 +54,7 @@ def test_build_twitch_capture_record_contains_sanitized_fields():
         "classification": "commands",
         "is_mod": True,
         "bot_outputs": [
-            "Available commands: !play !entries // Mod Commands: !start !clearentries"
+            "Available commands: !play !entries // Mod Commands: !start !openentries !closeentries !clearentries"
         ],
     }
 
@@ -123,7 +127,7 @@ async def test_handle_message_capture_enabled_writes_twitch_record(tmp_path, mon
     )
 
     assert outputs == [
-        "Available commands: !play !entries // Mod Commands: !start !clearentries"
+        "Available commands: !play !entries // Mod Commands: !start !openentries !closeentries !clearentries"
     ]
     records = [
         json.loads(line)
@@ -137,7 +141,7 @@ async def test_handle_message_capture_enabled_writes_twitch_record(tmp_path, mon
             "classification": "commands",
             "is_mod": True,
             "bot_outputs": [
-                "Available commands: !play !entries // Mod Commands: !start !clearentries"
+                "Available commands: !play !entries // Mod Commands: !start !openentries !closeentries !clearentries"
             ],
         }
     ]
@@ -173,7 +177,7 @@ async def test_replay_twitch_capture_record_verifies_command_output(monkeypatch,
         "classification": "commands",
         "is_mod": True,
         "bot_outputs": [
-            "Available commands: !play !entries // Mod Commands: !start !clearentries"
+            "Available commands: !play !entries // Mod Commands: !start !openentries !closeentries !clearentries"
         ],
     }
 
@@ -190,7 +194,7 @@ async def test_replay_twitch_capture_record_isolates_entry_file(monkeypatch, tmp
         "message": "!race",
         "classification": "entry",
         "is_mod": False,
-        "bot_outputs": ["You have been added example_user"],
+        "bot_outputs": ["You're in, example_user. You're car #1."],
     }
 
     outputs = await replay_twitch_capture_record(record, monkeypatch, tmp_path)
@@ -198,6 +202,260 @@ async def test_replay_twitch_capture_record_isolates_entry_file(monkeypatch, tmp
     assert outputs == record["bot_outputs"]
     assert list(trackracerbot.entry_queue) == ["example_user"]
     assert (tmp_path / "entries.txt").exists()
+
+
+@pytest.mark.asyncio
+async def test_entry_response_includes_car_number_and_preserves_author_case(monkeypatch, tmp_path):
+    outputs = []
+
+    async def fake_print_everywhere(logmessage, twitch_message=None):
+        outputs.append(logmessage)
+
+    monkeypatch.setattr(trackracerbot, "print_everywhere", fake_print_everywhere)
+    monkeypatch.setattr(trackracerbot, "CHAT_CAPTURE_FILE", "")
+    monkeypatch.setattr(trackracerbot, "entry_file_abs", str(tmp_path / "entries.txt"))
+
+    await trackracerbot.handle_message(
+        "!race",
+        "CAPSUser",
+        twitch_message=FakeTwitchMessage(is_mod=False),
+    )
+
+    assert outputs == ["You're in, CAPSUser. You're car #1."]
+    assert list(trackracerbot.entry_queue) == ["CAPSUser"]
+
+
+@pytest.mark.asyncio
+async def test_start_response_rotates_and_lowercases_lineup(monkeypatch, tmp_path):
+    outputs = []
+
+    async def fake_print_everywhere(logmessage, twitch_message=None):
+        outputs.append(logmessage)
+
+    monkeypatch.setattr(trackracerbot, "print_everywhere", fake_print_everywhere)
+    monkeypatch.setattr(trackracerbot, "CHAT_CAPTURE_FILE", "")
+    monkeypatch.setattr(trackracerbot, "entry_file_abs", str(tmp_path / "entries.txt"))
+    trackracerbot.entry_queue.extend(["RacerONE", "RACERTwo"])
+
+    await trackracerbot.handle_message(
+        "!start",
+        "example_mod",
+        twitch_message=FakeTwitchMessage(is_mod=True),
+    )
+
+    assert outputs == ["Starting grid locked: racerone, racertwo"]
+
+
+@pytest.mark.asyncio
+async def test_start_locks_registration_and_blocks_new_entries(monkeypatch, tmp_path):
+    outputs = []
+    state_file = tmp_path / "bot-state.json"
+
+    async def fake_print_everywhere(logmessage, twitch_message=None):
+        outputs.append(logmessage)
+
+    monkeypatch.setattr(trackracerbot, "print_everywhere", fake_print_everywhere)
+    monkeypatch.setattr(trackracerbot, "CHAT_CAPTURE_FILE", "")
+    monkeypatch.setattr(trackracerbot, "entry_file_abs", str(tmp_path / "entries.txt"))
+    monkeypatch.setattr(trackracerbot, "bot_state_file_abs", str(state_file))
+    trackracerbot.entry_queue.extend(["RacerONE", "RACERTwo"])
+
+    await trackracerbot.handle_message(
+        "!start",
+        "example_mod",
+        twitch_message=FakeTwitchMessage(is_mod=True),
+    )
+    await trackracerbot.handle_message(
+        "!race",
+        "late_user",
+        twitch_message=FakeTwitchMessage(is_mod=False),
+    )
+
+    assert outputs == [
+        "Starting grid locked: racerone, racertwo",
+        "Grid is locked, late_user. Use !entries to check the lineup.",
+    ]
+    assert list(trackracerbot.entry_queue) == ["RacerONE", "RACERTwo"]
+    trackracerbot.registration_open = True
+    trackracerbot.load_registration_state()
+    assert not trackracerbot.registration_open
+
+
+@pytest.mark.asyncio
+async def test_clear_entries_reopens_registration(monkeypatch, tmp_path):
+    outputs = []
+    state_file = tmp_path / "bot-state.json"
+
+    async def fake_print_everywhere(logmessage, twitch_message=None):
+        outputs.append(logmessage)
+
+    monkeypatch.setattr(trackracerbot, "print_everywhere", fake_print_everywhere)
+    monkeypatch.setattr(trackracerbot, "CHAT_CAPTURE_FILE", "")
+    monkeypatch.setattr(trackracerbot, "entry_file_abs", str(tmp_path / "entries.txt"))
+    monkeypatch.setattr(trackracerbot, "bot_state_file_abs", str(state_file))
+    trackracerbot.registration_open = False
+    trackracerbot.entry_queue.extend(["racer_one", "racer_two"])
+
+    await trackracerbot.handle_message(
+        "!clearentries",
+        "example_mod",
+        twitch_message=FakeTwitchMessage(is_mod=True),
+    )
+    await trackracerbot.handle_message(
+        "!race",
+        "new_user",
+        twitch_message=FakeTwitchMessage(is_mod=False),
+    )
+
+    assert outputs == [
+        "All entries have been cleared.",
+        "You're in, new_user. You're car #1.",
+    ]
+    assert list(trackracerbot.entry_queue) == ["new_user"]
+    trackracerbot.registration_open = False
+    trackracerbot.load_registration_state()
+    assert trackracerbot.registration_open
+
+
+@pytest.mark.asyncio
+async def test_open_entries_reopens_registration_without_clearing_queue(monkeypatch, tmp_path):
+    outputs = []
+    state_file = tmp_path / "bot-state.json"
+
+    async def fake_print_everywhere(logmessage, twitch_message=None):
+        outputs.append(logmessage)
+
+    monkeypatch.setattr(trackracerbot, "print_everywhere", fake_print_everywhere)
+    monkeypatch.setattr(trackracerbot, "CHAT_CAPTURE_FILE", "")
+    monkeypatch.setattr(trackracerbot, "entry_file_abs", str(tmp_path / "entries.txt"))
+    monkeypatch.setattr(trackracerbot, "bot_state_file_abs", str(state_file))
+    trackracerbot.registration_open = False
+    trackracerbot.entry_queue.extend(["racer_one", "racer_two"])
+
+    await trackracerbot.handle_message(
+        "!openentries",
+        "example_mod",
+        twitch_message=FakeTwitchMessage(is_mod=True),
+    )
+    await trackracerbot.handle_message(
+        "!race",
+        "new_user",
+        twitch_message=FakeTwitchMessage(is_mod=False),
+    )
+
+    assert outputs == [
+        "Entries are open.",
+        "Added to the grid, new_user. You're car #3.",
+    ]
+    assert list(trackracerbot.entry_queue) == ["racer_one", "racer_two", "new_user"]
+    trackracerbot.registration_open = False
+    trackracerbot.load_registration_state()
+    assert trackracerbot.registration_open
+
+
+@pytest.mark.asyncio
+async def test_non_mod_open_entries_does_not_reopen_registration(monkeypatch, tmp_path):
+    outputs = []
+    state_file = tmp_path / "bot-state.json"
+
+    async def fake_print_everywhere(logmessage, twitch_message=None):
+        outputs.append(logmessage)
+
+    monkeypatch.setattr(trackracerbot, "print_everywhere", fake_print_everywhere)
+    monkeypatch.setattr(trackracerbot, "CHAT_CAPTURE_FILE", "")
+    monkeypatch.setattr(trackracerbot, "bot_state_file_abs", str(state_file))
+    trackracerbot.registration_open = False
+    trackracerbot.set_registration_open(False)
+
+    await trackracerbot.handle_message(
+        "!openentries",
+        "example_user",
+        twitch_message=FakeTwitchMessage(is_mod=False),
+    )
+
+    assert outputs == []
+    assert not trackracerbot.registration_open
+
+
+@pytest.mark.asyncio
+async def test_close_entries_closes_registration_without_clearing_queue(monkeypatch, tmp_path):
+    outputs = []
+    state_file = tmp_path / "bot-state.json"
+
+    async def fake_print_everywhere(logmessage, twitch_message=None):
+        outputs.append(logmessage)
+
+    monkeypatch.setattr(trackracerbot, "print_everywhere", fake_print_everywhere)
+    monkeypatch.setattr(trackracerbot, "CHAT_CAPTURE_FILE", "")
+    monkeypatch.setattr(trackracerbot, "bot_state_file_abs", str(state_file))
+    trackracerbot.registration_open = True
+    trackracerbot.entry_queue.extend(["racer_one", "racer_two"])
+
+    await trackracerbot.handle_message(
+        "!closeentries",
+        "example_mod",
+        twitch_message=FakeTwitchMessage(is_mod=True),
+    )
+
+    assert outputs == ["entries closed"]
+    assert list(trackracerbot.entry_queue) == ["racer_one", "racer_two"]
+    assert not trackracerbot.registration_open
+    trackracerbot.registration_open = True
+    trackracerbot.load_registration_state()
+    assert not trackracerbot.registration_open
+
+
+@pytest.mark.asyncio
+async def test_non_mod_close_entries_does_not_close_registration(monkeypatch, tmp_path):
+    outputs = []
+    state_file = tmp_path / "bot-state.json"
+
+    async def fake_print_everywhere(logmessage, twitch_message=None):
+        outputs.append(logmessage)
+
+    monkeypatch.setattr(trackracerbot, "print_everywhere", fake_print_everywhere)
+    monkeypatch.setattr(trackracerbot, "CHAT_CAPTURE_FILE", "")
+    monkeypatch.setattr(trackracerbot, "bot_state_file_abs", str(state_file))
+    trackracerbot.registration_open = True
+    trackracerbot.set_registration_open(True)
+
+    await trackracerbot.handle_message(
+        "!closeentries",
+        "example_user",
+        twitch_message=FakeTwitchMessage(is_mod=False),
+    )
+
+    assert outputs == []
+    assert trackracerbot.registration_open
+
+
+@pytest.mark.asyncio
+async def test_duplicate_entry_response_rotates_and_includes_car_number(monkeypatch, tmp_path):
+    outputs = []
+
+    async def fake_print_everywhere(logmessage, twitch_message=None):
+        outputs.append(logmessage)
+
+    monkeypatch.setattr(trackracerbot, "print_everywhere", fake_print_everywhere)
+    monkeypatch.setattr(trackracerbot, "CHAT_CAPTURE_FILE", "")
+    monkeypatch.setattr(trackracerbot, "entry_file_abs", str(tmp_path / "entries.txt"))
+    trackracerbot.entry_queue.extend(["first_user", "CAPSUser"])
+
+    await trackracerbot.handle_message(
+        "!race",
+        "CAPSUser",
+        twitch_message=FakeTwitchMessage(is_mod=False),
+    )
+    await trackracerbot.handle_message(
+        "!race",
+        "CAPSUser",
+        twitch_message=FakeTwitchMessage(is_mod=False),
+    )
+
+    assert outputs == [
+        "You're already in, CAPSUser. You're car #2.",
+        "You're on the grid already, CAPSUser. Car #2 is yours.",
+    ]
 
 
 def load_jsonl_fixture(path):
@@ -230,10 +488,12 @@ async def test_replay_twitch_command_fixture_covers_all_commands(monkeypatch, tm
         "play_duplicate",
         "enter_duplicate",
         "join_duplicate",
-        "emote_duplicate",
-        "start_mod",
-        "clearentries_mod",
-    ]
+            "emote_duplicate",
+            "start_mod",
+            "openentries_mod",
+            "closeentries_mod",
+            "clearentries_mod",
+        ]
 
     for index, record in enumerate(records):
         record_tmp_path = tmp_path / str(index)
