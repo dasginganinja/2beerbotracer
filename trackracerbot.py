@@ -409,7 +409,7 @@ def write_registration_state() -> None:
 
 def set_registration_open(is_open: bool) -> None:
     global registration_open
-    registration_open = is_open
+    registration_open = is_open and len(entry_queue) < MAX_ENTRIES
     write_registration_state()
 
 
@@ -423,7 +423,10 @@ def load_registration_state() -> None:
     try:
         with open(bot_state_file_abs, encoding="utf-8") as state_file:
             state = json.load(state_file)
-        registration_open = bool(state.get("registration_open", len(entry_queue) == 0))
+        registration_open = (
+            bool(state.get("registration_open", len(entry_queue) == 0))
+            and len(entry_queue) < MAX_ENTRIES
+        )
     except (OSError, ValueError, TypeError) as e:
         print(f"Could not read bot state: {e}")
         registration_open = len(entry_queue) == 0

@@ -395,6 +395,33 @@ def test_registration_state_round_trips_to_json(tmp_path, monkeypatch):
     assert not trackracerbot.registration_open
 
 
+def test_registration_state_closes_when_restored_queue_is_full(tmp_path, monkeypatch):
+    state_file = tmp_path / "bot-state.json"
+    monkeypatch.setattr(trackracerbot, "bot_state_file_abs", str(state_file))
+    trackracerbot.entry_queue.clear()
+    trackracerbot.entry_queue.extend(
+        f"racer_{index}" for index in range(trackracerbot.MAX_ENTRIES)
+    )
+    state_file.write_text('{"registration_open": true}', encoding="utf-8")
+
+    trackracerbot.load_registration_state()
+
+    assert not trackracerbot.registration_open
+
+
+def test_set_registration_open_cannot_open_full_queue(tmp_path, monkeypatch):
+    state_file = tmp_path / "bot-state.json"
+    monkeypatch.setattr(trackracerbot, "bot_state_file_abs", str(state_file))
+    trackracerbot.entry_queue.clear()
+    trackracerbot.entry_queue.extend(
+        f"racer_{index}" for index in range(trackracerbot.MAX_ENTRIES)
+    )
+
+    trackracerbot.set_registration_open(True)
+
+    assert not trackracerbot.registration_open
+
+
 def test_is_moderator_message_source_detects_twitch_mods():
     assert trackracerbot.is_moderator_message_source(
         twitch_message=FakeTwitchMessage(FakeAuthor(True))
