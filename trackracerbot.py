@@ -4,6 +4,7 @@ import collections
 import itertools
 import threading
 import asyncio
+import time
 
 from twitchio.ext import commands
 from twitchio.message import Message as TwitchMessage
@@ -43,9 +44,21 @@ if entry_file is None:
 
 # Set the absolute path to the savefile
 entry_file_abs = os.path.abspath(entry_file)
+bot_state_file = os.getenv("BOT_STATE_FILE")
+if bot_state_file is None:
+    bot_state_file = os.path.join(os.path.dirname(entry_file_abs), "bot-state.json")
+bot_state_file_abs = os.path.abspath(bot_state_file)
 
 # Set maximum number of entries
 MAX_ENTRIES = 30
+registration_open = True
+
+submission_stats = {
+    "started_at": None,
+    "accepted_entries": 0,
+    "twitch_entries": 0,
+    "reported": False,
+}
 
 # Message queue for Twitch chat to handle rate limiting
 # Will be initialized when Bot is ready (needs event loop)
@@ -55,6 +68,11 @@ twitch_channel_ref = None  # Will be set when bot is ready
 # Rate limiting: Twitch allows ~20 messages per 30 seconds for regular users
 # We'll be conservative and send 1 message per 1.5 seconds (20 per 30s)
 MESSAGE_RATE_LIMIT = 1.5  # seconds between messages
+signup_reminder_interval_seconds = float(
+    os.getenv("SIGNUP_REMINDER_INTERVAL_SECONDS", "60")
+)
+last_signup_activity_at = None
+signup_reminder_pending = True
 
 ENTRY_COMMANDS = ("!race", "!play", "!enter", "!join")
 ENTRY_EMOTE_PREFIXES = (
@@ -70,14 +88,186 @@ ENTRY_EMOTE_PREFIXES = (
 COMMAND_COMMANDS = "commands"
 COMMAND_ENTRY = "entry"
 COMMAND_START = "start"
+COMMAND_OPEN_ENTRIES = "open_entries"
+COMMAND_CLOSE_ENTRIES = "close_entries"
 COMMAND_CLEAR_ENTRIES = "clear_entries"
 COMMAND_ENTRIES = "entries"
+COMMAND_ENTRY_LOOKUP = "entry_lookup"
 COMMAND_UNKNOWN = "unknown"
 
 COMMANDS_COMMAND = "!commands"
 START_COMMAND = "!start"
+OPEN_ENTRIES_COMMAND = "!openentries"
+CLOSE_ENTRIES_COMMAND = "!closeentries"
 CLEAR_ENTRIES_COMMAND = "!clearentries"
 ENTRIES_COMMAND = "!entries"
+ENTRY_LOOKUP_COMMAND = "!entry"
+
+ENTRY_RESPONSE_TEMPLATES = (
+    "You're in, {author}. You're car #{position}.",
+    "Locked in, {author}. You're car #{position}.",
+    "Added to the grid, {author}. You're car #{position}.",
+    "You're on the list, {author}. Car #{position} is yours.",
+    "Registered, {author}. You've got car #{position}.",
+    "Welcome to the queue, {author}. You're car #{position}.",
+    "Got you, {author}. You're in car #{position}.",
+    "Grid slot claimed, {author}. You're car #{position}.",
+)
+
+DUPLICATE_ENTRY_RESPONSE_TEMPLATES = (
+    "You're already in, {author}. You're car #{position}.",
+    "You're on the grid already, {author}. Car #{position} is yours.",
+    "Hold tight, {author}. You're already car #{position}.",
+    "Already got you, {author}. You're in car #{position}.",
+    "No need to re-enter, {author}. You're car #{position}.",
+    "You're still locked in, {author}. Car #{position} is set.",
+    "Duplicate ignored, {author}. You're already car #{position}.",
+    "You're covered, {author}. Car #{position} is yours.",
+)
+
+SIGNUP_REMINDER_TEMPLATES = (
+    "Entries are still open. Type !race before the treadmill starts judging the room.",
+    "Race control is hearing a lot of silence and seeing a lot of empty grid spots. !race gets you in.",
+    "The belt is warm, the grid is lonely, and your car has not yet made a terrible decision. Type !race.",
+    "This is your reminder that !race exists, and so does glory on moving rubber.",
+    "Registration remains open. The treadmill is patient, but only because it has no concept of mercy.",
+    "The race queue is still accepting brave little machines. Type !race and become part of the incident.",
+    "We have open spots on the grid and a treadmill with nothing better to do. !race to enter.",
+    "The silence in registration is suspicious. Somebody type !race before we start inspecting setups.",
+    "Entries are open. This is not the time to be responsible.",
+    "The grid has room. The belt has attitude. Type !race.",
+    "Somewhere out there is a car that deserves to fly off a treadmill. Type !race and nominate it.",
+    "Race control is still taking entries. Don't make the treadmill race itself.",
+    "The list is open, the track is moving, and the excuses are still free. !race to join.",
+    "There are empty grid slots, which means several of you are still pretending to have dignity.",
+    "Type !race to enter. Or don't, and let someone else become treadmill folklore.",
+    "Registration is still open. The fastest way to join is !race. The funniest way is also !race.",
+    "We are moments away from organized belt-based nonsense. !race gets you on the list.",
+    "The treadmill has been repurposed and it demands competitors. Type !race.",
+    "There is still time to enter before physics starts taking attendance.",
+    "Race control has detected a lull. This is usually where someone makes a bad but entertaining choice.",
+    "The entry list is looking a little too safe. Type !race and fix that.",
+    "The grid is not full yet. That means your tiny car still has a chance to disappoint everyone.",
+    "Registration remains open for cars, dreams, and suspicious engineering. !race to enter.",
+    "The belt is idle enough to think. That is dangerous. Type !race.",
+    "Open entries, open track, open question: who's brave enough to get thrown into treadmill history?",
+    "This is the part where the quiet people suddenly become competitors. Type !race.",
+    "The treadmill is warmed up. Your excuses can warm up later. !race to join.",
+    "The field needs more victims. Respectfully. !race.",
+    "Race control is accepting entries and emotional support vehicles. Type !race.",
+    "There is still room on the list for one more bad idea with wheels.",
+    "The grid is open. The treadmill is hungry. Chat is suspiciously quiet.",
+    "Type !race now and give the announcer something irresponsible to say.",
+    "We have empty slots and a moving track. This problem solves itself when you type !race.",
+    "The entry window is still open. Do not let the responsible people win.",
+    "This lull has been reviewed by race control and declared unacceptable. !race.",
+    "The belt is standing by for competitors. Or sacrifices. The paperwork is unclear.",
+    'Registration is still live. Enter now before someone says "last call" like this is a real sport.',
+    "The race list has space. The treadmill has opinions. !race to join.",
+    "This is your chance to become a name on a very strange leaderboard.",
+    "Race control would like to remind chat that watching is safer, but entering is funnier.",
+    "The grid could use more chaos. Type !race and bring your own problem.",
+    "Open registration continues. Please enter before the treadmill gets bored and starts picking favorites.",
+    "Some of you are lurking like your car wouldn't immediately become content. Type !race.",
+    "The belt is ready. The bot is ready. The question is whether chat has courage.",
+    "Entries remain open. This is treadmill racing, not jury duty. Participation is encouraged.",
+    "Type !race to join the grid and receive absolutely no guarantee of dignity.",
+    "The race queue has room for more tiny cars and bigger mistakes.",
+    "The treadmill has not yet claimed enough dreams. !race to assist.",
+    "Registration is still open. The only wrong move is pretending you're above this.",
+    "The grid needs more names. The belt needs more business. Type !race.",
+    "This is a friendly reminder from race control: !race puts you in the madness.",
+    "The entry list is open, and so is the possibility of becoming a cautionary tale.",
+    "Quiet chat means empty grid. Empty grid means the treadmill wins. Type !race.",
+    "The belt is spinning spiritually, even if not physically. It wants competitors.",
+    "Type !race and let your car experience the most questionable racetrack in the room.",
+    "Registration remains open for all brave, doomed, or overconfident entries.",
+    "The list is still open. The treadmill has been staring at us for too long.",
+    "Race control has noticed several potential cowards in the stands. !race may correct this.",
+    "This is the awkward silence before someone enters and immediately regrets it.",
+    "The grid is open. The drama is under capacity. Type !race.",
+    "Entries are still open. Somebody give this treadmill a reason to believe.",
+    "The queue needs more names before we can call this a proper disaster.",
+    "Type !race and join the only race where the track does cardio for you.",
+    "The entry window remains open. Don't let the belt sit there unemployed.",
+    "Race control is requesting more cars for scientific and comedic purposes.",
+    "The grid is not full, which means glory is still available at a questionable discount.",
+    "Type !race before someone else takes your spot in treadmill history.",
+    "The treadmill is accepting challengers. Chat is accepting peer pressure.",
+    "Open slots remain. That is not a warning. That is an invitation.",
+    "The race list is looking polite. We need less polite. Type !race.",
+    "Registration is open and the belt has no respect for hesitation.",
+    "This is your low-pressure opportunity to make a high-speed mistake.",
+    "The treadmill is ready to turn someone's setup into a lesson. !race to volunteer.",
+    "Race control is still awake, somehow. Type !race and make it worth it.",
+    "The grid needs more contenders, pretenders, and rolling question marks.",
+    "Entries are open. Become part of the show before the show becomes part of you.",
+    "The silence is strong, but the lure of tiny car chaos is stronger. !race.",
+    "Type !race and find out if your car is fast, stable, or decorative.",
+    "Registration is still open. The belt waits for no one, except currently everyone.",
+    "The track is ready. The bot is nagging. The grid has room.",
+    "Somebody type !race before we start interviewing the treadmill.",
+    "The entry list has vacancies and the announcer has dangerous levels of free time.",
+    "This lull brought to you by hesitation. End it with !race.",
+    "Race control is still taking entries. Pride is optional. Wheels are preferred.",
+    "The treadmill has been converted into a racetrack and somehow you're still not entered.",
+    "Type !race and become part of a motorsport format your insurance agent would not understand.",
+    "Open grid spots remain for anyone brave enough to challenge moving rubber.",
+    "The belt is bored, the bot is watching, and chat has unfinished business.",
+    "Registration is still live. Enter now and let the treadmill sort out the details.",
+    "The list needs more names before we can properly blame physics.",
+    "Type !race. Worst case, you become content. Best case, you also become content.",
+    "Race control is asking nicely before it starts asking like a disappointed crew chief.",
+    "Entries are still open. This is the part where legends, cowards, and toy cars separate themselves.",
+    "The grid is hungry. The belt is mean. The command is !race.",
+)
+
+START_RESPONSE_TEMPLATES = (
+    "Starting grid locked: {lineup}",
+    "Rolling out with: {lineup}",
+    "Race lineup is set: {lineup}",
+    "Sending these racers: {lineup}",
+    "On the line: {lineup}",
+    "Next race is ready for: {lineup}",
+    "Grid is live: {lineup}",
+    "Race call: {lineup}",
+)
+
+WELCOME_MESSAGE_TEMPLATES = (
+    "[botname] is here. The treadmill is moving, the cars are confused, and entries are {registration_status}.",
+    "[botname] has arrived at race control. Please submit your tiny machines and oversized confidence.",
+    "[botname] is online. I'm here to collect entries and pretend this is a sanctioned event.",
+    "[botname] has joined the paddock. The track is a treadmill, which already answers several questions.",
+    "[botname] is here. If your car has wheels and a dream, get it entered.",
+    "[botname] has arrived. The racing surface is technically exercise equipment, but we're moving forward.",
+    "[botname] is live. Entries are {registration_status} for whatever this beautiful motorsport mistake is.",
+    "[botname] just walked into race control. The grid is forming, the treadmill is humming, and nobody is fully prepared.",
+    "[botname] is here. Tonight we find out which vehicle has speed, courage, and poor traction management.",
+    "[botname] has joined. Please line up your tiny race cars and enormous expectations.",
+    "[botname] is now accepting entries. This is not Formula 1, but the paperwork is somehow worse.",
+    "[botname] has arrived at the timing booth. I assume the timing booth is just a guy near a treadmill.",
+    "[botname] is here. The cars are small, the drama is real, and the track refuses to sit still.",
+    "[botname] has entered the chat. I'll be handling entries for the world's least OSHA-approved motorsport.",
+    "[botname] is online. The treadmill has been converted from fitness equipment to destiny equipment.",
+    "[botname] is here. If your vehicle can survive belt speed and public judgment, send it in.",
+    "[botname] has joined race control. We have a moving track, questionable engineering, and a crowd that wants answers.",
+    "[botname] is live. The entries are {registration_status} and the treadmill appears emotionally ready.",
+    "[botname] has arrived. This is racing, technically, and that is good enough for me.",
+    "[botname] is here. Please register your car before it becomes track debris.",
+    "[botname] has joined. The paddock is open, the belt is ready, and someone's about to learn about friction.",
+    "[botname] is online. I'm collecting entries for tiny cars doing big dumb hero stuff.",
+    "[botname] has arrived. The track moves, the cars cope, and I make announcements like this is normal.",
+    "[botname] is here. Get your entries in before the treadmill achieves sentience.",
+)
+
+REGISTRATION_CLOSED_RESPONSE = (
+    "Grid is locked, {author}."
+)
+
+start_response_counter = itertools.count()
+duplicate_entry_response_counter = itertools.count()
+welcome_message_counter = itertools.count()
+signup_reminder_counter = itertools.count()
 
 
 def is_entry_message(message: str) -> bool:
@@ -93,6 +283,14 @@ def is_start_message(message: str) -> bool:
     return message.lower().startswith(START_COMMAND)
 
 
+def is_open_entries_message(message: str) -> bool:
+    return message.lower().startswith(OPEN_ENTRIES_COMMAND)
+
+
+def is_close_entries_message(message: str) -> bool:
+    return message.lower().startswith(CLOSE_ENTRIES_COMMAND)
+
+
 def is_clear_entries_message(message: str) -> bool:
     return message.lower().startswith(CLEAR_ENTRIES_COMMAND)
 
@@ -101,18 +299,246 @@ def is_entries_message(message: str) -> bool:
     return message.lower().startswith(ENTRIES_COMMAND)
 
 
+def is_entry_lookup_message(message: str) -> bool:
+    message_lower = message.lower()
+    return message_lower == ENTRY_LOOKUP_COMMAND or message_lower.startswith(
+        ENTRY_LOOKUP_COMMAND + " "
+    )
+
+
 def classify_message(message: str) -> str:
     if is_commands_message(message):
         return COMMAND_COMMANDS
+    if is_entry_lookup_message(message):
+        return COMMAND_ENTRY_LOOKUP
     if is_entry_message(message):
         return COMMAND_ENTRY
     if is_start_message(message):
         return COMMAND_START
+    if is_open_entries_message(message):
+        return COMMAND_OPEN_ENTRIES
+    if is_close_entries_message(message):
+        return COMMAND_CLOSE_ENTRIES
     if is_clear_entries_message(message):
         return COMMAND_CLEAR_ENTRIES
     if is_entries_message(message):
         return COMMAND_ENTRIES
     return COMMAND_UNKNOWN
+
+
+def reset_response_rotation() -> None:
+    global duplicate_entry_response_counter, start_response_counter
+    global welcome_message_counter, signup_reminder_counter
+    duplicate_entry_response_counter = itertools.count()
+    start_response_counter = itertools.count()
+    welcome_message_counter = itertools.count()
+    signup_reminder_counter = itertools.count()
+
+
+def display_car_number(position: int) -> int:
+    if position == 29:
+        return 69
+    return position
+
+
+def find_entry_by_display_number(entries, display_number: int):
+    for index, name in enumerate(entries, start=1):
+        if display_car_number(index) == display_number:
+            return name, index
+    return None
+
+
+def normalize_entry_lookup_name(search_text: str) -> str:
+    return search_text.strip().lstrip("@").lower()
+
+
+def find_entry_by_name(entries, search_text: str):
+    normalized_search = normalize_entry_lookup_name(search_text)
+    for index, name in enumerate(entries, start=1):
+        if name.lower() == normalized_search:
+            return name, index
+    return None
+
+
+def build_entry_lookup_response(search_text: str, entries) -> str:
+    query = search_text.strip()
+    if not query:
+        return "Usage: !entry {number or name}"
+
+    if query.isdigit():
+        display_number = int(query)
+        result = find_entry_by_display_number(entries, display_number)
+        if result is None:
+            return f"No entry found for car #{display_number}."
+
+        name, _position = result
+        return f"Car #{display_number} is {name}."
+
+    result = find_entry_by_name(entries, query)
+    if result is None:
+        return f"No entry found for {query}."
+
+    name, position = result
+    return f"{name} is car #{display_car_number(position)}."
+
+
+def build_entry_response(author: str, position: int) -> str:
+    template = ENTRY_RESPONSE_TEMPLATES[(position - 1) % len(ENTRY_RESPONSE_TEMPLATES)]
+    return template.format(author=author, position=display_car_number(position))
+
+
+def build_duplicate_entry_response(author: str, position: int, rotation_index: int) -> str:
+    template = DUPLICATE_ENTRY_RESPONSE_TEMPLATES[
+        rotation_index % len(DUPLICATE_ENTRY_RESPONSE_TEMPLATES)
+    ]
+    return template.format(author=author, position=display_car_number(position))
+
+
+def build_start_response(lineup_names, rotation_index: int) -> str:
+    lineup = ", ".join(name.lower() for name in lineup_names)
+    template = START_RESPONSE_TEMPLATES[rotation_index % len(START_RESPONSE_TEMPLATES)]
+    return template.format(lineup=lineup)
+
+
+def build_registration_closed_response(author: str) -> str:
+    return REGISTRATION_CLOSED_RESPONSE.format(author=author)
+
+
+def build_welcome_message(
+    bot_name: str, rotation_index: int, is_registration_open: bool
+) -> str:
+    template = WELCOME_MESSAGE_TEMPLATES[
+        rotation_index % len(WELCOME_MESSAGE_TEMPLATES)
+    ]
+    registration_status = "open" if is_registration_open else "closed"
+    return template.format(registration_status=registration_status).replace(
+        "[botname]", bot_name or "TrackRacerBot"
+    )
+
+
+def build_costreaming_status_message(is_registration_open: bool) -> str:
+    status = "open" if is_registration_open else "closed"
+    return (
+        "Costreaming mode enabled. Reading the chat. "
+        f"Races are {status} currently."
+    )
+
+
+def build_signup_reminder_message(remaining_slots: int, rotation_index: int) -> str:
+    spot_word = "spot" if remaining_slots == 1 else "spots"
+    template = SIGNUP_REMINDER_TEMPLATES[
+        rotation_index % len(SIGNUP_REMINDER_TEMPLATES)
+    ]
+    return template.format(remaining_slots=remaining_slots, spot_word=spot_word)
+
+
+def should_send_signup_reminder(
+    now: float,
+    last_activity_at: float,
+    reminder_sent: bool,
+    is_registration_open: bool,
+    entry_count: int,
+    interval_seconds: float,
+) -> bool:
+    return (
+        interval_seconds > 0
+        and reminder_sent
+        and is_registration_open
+        and entry_count < MAX_ENTRIES
+        and last_activity_at is not None
+        and now - last_activity_at >= interval_seconds
+    )
+
+
+def mark_signup_activity(monotonic_time: float) -> None:
+    global last_signup_activity_at, signup_reminder_pending
+    last_signup_activity_at = monotonic_time
+    signup_reminder_pending = True
+
+
+async def send_signup_reminder_if_idle(now: float) -> None:
+    global signup_reminder_pending
+
+    if not should_send_signup_reminder(
+        now=now,
+        last_activity_at=last_signup_activity_at,
+        reminder_sent=signup_reminder_pending,
+        is_registration_open=registration_open,
+        entry_count=len(entry_queue),
+        interval_seconds=signup_reminder_interval_seconds,
+    ):
+        return
+
+    remaining_slots = MAX_ENTRIES - len(entry_queue)
+    await print_everywhere(
+        build_signup_reminder_message(
+            remaining_slots,
+            next(signup_reminder_counter),
+        )
+    )
+    signup_reminder_pending = False
+
+
+async def send_welcome_message() -> None:
+    await print_everywhere(
+        build_welcome_message(BOT_NAME, next(welcome_message_counter), registration_open)
+    )
+    await print_everywhere(build_costreaming_status_message(registration_open))
+
+
+def write_registration_state() -> None:
+    try:
+        state_dir = os.path.dirname(bot_state_file_abs)
+        if state_dir:
+            os.makedirs(state_dir, exist_ok=True)
+
+        with open(bot_state_file_abs, "w", encoding="utf-8") as state_file:
+            json.dump(
+                {
+                    "registration_open": registration_open,
+                    "submission_stats": submission_stats,
+                },
+                state_file,
+            )
+    except OSError as e:
+        print(f"Could not write bot state: {e}")
+
+
+def set_registration_open(is_open: bool) -> None:
+    global registration_open
+    registration_open = is_open and len(entry_queue) < MAX_ENTRIES
+    write_registration_state()
+
+
+def load_registration_state() -> None:
+    global registration_open
+
+    if not os.path.exists(bot_state_file_abs):
+        registration_open = len(entry_queue) == 0
+        return
+
+    try:
+        with open(bot_state_file_abs, encoding="utf-8") as state_file:
+            state = json.load(state_file)
+        registration_open = (
+            bool(state.get("registration_open", len(entry_queue) == 0))
+            and len(entry_queue) < MAX_ENTRIES
+        )
+        loaded_submission_stats = state.get("submission_stats", {})
+        if isinstance(loaded_submission_stats, dict):
+            submission_stats["started_at"] = loaded_submission_stats.get("started_at")
+            submission_stats["accepted_entries"] = int(
+                loaded_submission_stats.get("accepted_entries", 0)
+            )
+            submission_stats["twitch_entries"] = int(
+                loaded_submission_stats.get("twitch_entries", 0)
+            )
+            submission_stats["reported"] = bool(
+                loaded_submission_stats.get("reported", False)
+            )
+    except (OSError, ValueError, TypeError) as e:
+        print(f"Could not read bot state: {e}")
+        registration_open = len(entry_queue) == 0
 
 
 def is_moderator_message_source(twitch_message: TwitchMessage = None, youtube_message=None) -> bool:
@@ -167,6 +593,63 @@ def write_chat_capture_record(record: dict) -> None:
         print(f"Could not write chat capture record: {e}")
 
 
+def reset_submission_stats(started_at: float = None, persist: bool = True) -> None:
+    submission_stats["started_at"] = started_at
+    submission_stats["accepted_entries"] = 0
+    submission_stats["twitch_entries"] = 0
+    submission_stats["reported"] = False
+    if persist:
+        write_registration_state()
+
+
+def format_elapsed_time(seconds: float) -> str:
+    total_seconds = max(0, int(seconds))
+    hours = total_seconds // 3600
+    minutes = (total_seconds % 3600) // 60
+    remaining_seconds = total_seconds % 60
+
+    if hours:
+        return f"{hours}h {minutes}m {remaining_seconds}s"
+    if minutes:
+        return f"{minutes}m {remaining_seconds}s"
+    return f"{remaining_seconds}s"
+
+
+def record_submission_entry(twitch_message: TwitchMessage = None) -> None:
+    if submission_stats["started_at"] is None or submission_stats["reported"]:
+        return
+
+    submission_stats["accepted_entries"] += 1
+    if twitch_message is not None:
+        submission_stats["twitch_entries"] += 1
+    write_registration_state()
+
+
+def build_submission_stats_message(finished_at: float) -> str:
+    elapsed = format_elapsed_time(finished_at - submission_stats["started_at"])
+    accepted_entries = submission_stats["accepted_entries"]
+    twitch_entries = submission_stats["twitch_entries"]
+    twitch_percentage = (
+        twitch_entries / accepted_entries * 100
+        if accepted_entries
+        else 0
+    )
+
+    return (
+        f"Entry list filled in {elapsed}. "
+        f"Twitch entries: {twitch_percentage:.1f}% "
+        f"({twitch_entries}/{accepted_entries})."
+    )
+
+
+def should_report_submission_stats() -> bool:
+    return (
+        submission_stats["started_at"] is not None
+        and not submission_stats["reported"]
+        and len(entry_queue) >= MAX_ENTRIES
+    )
+
+
 def clear_queue():
     # Clear the queue
     entry_queue.clear()
@@ -189,14 +672,39 @@ async def handle_message(message: str, author: str, twitch_message: TwitchMessag
         await print_everywhere(logmessage, twitch_message=twitch_message)
 
     if command == COMMAND_COMMANDS:
-        commands_message = "Available commands: !play !entries"
+        commands_message = "Available commands: !play"
         if is_mod:
-            commands_message += " // Mod Commands: !start !clearentries"
+            commands_message += " // Mod Commands: !start !openentries !closeentries !clearentries"
         await respond(commands_message)
 
+    elif command == COMMAND_ENTRY_LOOKUP:
+        search_text = message[len(ENTRY_LOOKUP_COMMAND):].strip()
+        await respond(build_entry_lookup_response(search_text, entry_queue))
+
     if command == COMMAND_ENTRY:
+        if not registration_open:
+            await respond(build_registration_closed_response(author))
+            write_chat_capture_record(
+                build_twitch_capture_record(
+                    message=message,
+                    author=author,
+                    command=command,
+                    is_mod=is_mod,
+                    bot_outputs=capture_outputs,
+                    twitch_message=twitch_message,
+                )
+            )
+            return
+
         if author in entry_queue:
-            await respond("You have already entered, " + author + ". Nice try :)")
+            position = list(entry_queue).index(author) + 1
+            await respond(
+                build_duplicate_entry_response(
+                    author,
+                    position,
+                    next(duplicate_entry_response_counter),
+                )
+            )
             write_chat_capture_record(
                 build_twitch_capture_record(
                     message=message,
@@ -216,18 +724,38 @@ async def handle_message(message: str, author: str, twitch_message: TwitchMessag
 
             # Write to a file for the MAX_ENTRIES
             bang_out_queue_to_file(entry_file_abs)
-            
 
-            await respond("You have been added " + author)
+            record_submission_entry(twitch_message=twitch_message)
+            mark_signup_activity(time.monotonic())
+
+            await respond(build_entry_response(author, len(entry_queue)))
+            if should_report_submission_stats():
+                await respond(build_submission_stats_message(time.monotonic()))
+                submission_stats["reported"] = True
+                write_registration_state()
         else:
             await respond("The list is full, " + author + ". Better luck next race!")
 
     elif command == COMMAND_START and is_mod:
-        await respond("Starting for " + ", ".join(itertools.islice(entry_queue,0,MAX_ENTRIES)))
+        lineup_names = list(itertools.islice(entry_queue, 0, MAX_ENTRIES))
+        await respond(build_start_response(lineup_names, next(start_response_counter)))
+        set_registration_open(False)
+
+    elif command == COMMAND_OPEN_ENTRIES and is_mod:
+        set_registration_open(True)
+        mark_signup_activity(time.monotonic())
+        await respond("Entries are open.")
+
+    elif command == COMMAND_CLOSE_ENTRIES and is_mod:
+        set_registration_open(False)
+        await respond("entries closed")
                 
     elif command == COMMAND_CLEAR_ENTRIES and is_mod:
         # Clear the queue
         clear_queue()
+        set_registration_open(True)
+        reset_submission_stats(time.monotonic())
+        mark_signup_activity(time.monotonic())
         await respond("All entries have been cleared.")
 
     elif command == COMMAND_ENTRIES:
@@ -291,6 +819,7 @@ class Bot(commands.Bot):
     def __init__(self):
         super().__init__(token=access_token, client_id=client_id, nick=BOT_NAME, prefix='!', initial_channels=[TWITCH_CHANNEL])
         self._message_processor_task = None
+        self._signup_reminder_task = None
 
     async def event_ready(self):
         # Notify us when everything is ready!
@@ -312,8 +841,26 @@ class Bot(commands.Bot):
         # Start the message processor task
         self._message_processor_task = asyncio.create_task(self._process_message_queue())
         print('Message queue processor started')
+        if last_signup_activity_at is None:
+            mark_signup_activity(time.monotonic())
+        self._signup_reminder_task = asyncio.create_task(self._process_signup_reminders())
+        print('Signup reminder processor started')
 
-        # await self.connected_channels[0].send("2BeerBot has connected and is ready for NATMAR. !commands for more info")
+        await send_welcome_message()
+
+    async def _process_signup_reminders(self):
+        """Background task that prompts chat when signups are idle."""
+        while True:
+            try:
+                sleep_seconds = max(1.0, signup_reminder_interval_seconds)
+                await asyncio.sleep(sleep_seconds)
+                await send_signup_reminder_if_idle(time.monotonic())
+            except asyncio.CancelledError:
+                print("Signup reminder processor cancelled")
+                break
+            except Exception as e:
+                print(f"Error in signup reminder processor: {e}")
+                await asyncio.sleep(1)
 
     async def _process_message_queue(self):
         """Background task that processes queued messages respecting Twitch rate limits."""
@@ -402,6 +949,8 @@ if os.path.exists(entry_file_abs):
             if line != "":
                 # Add the line to the deque
                 entry_queue.append(line)
+
+load_registration_state()
 
 def listen_to_twitch():
     loop = asyncio.new_event_loop()
@@ -493,10 +1042,7 @@ def entries_json():
 
         # Loop through entries
         for element in entry_queue:
-            number = count
-            # Custom number for 29 per Art's request
-            if number == 29:
-                number = 69
+            number = display_car_number(count)
             name = element
 
             # Add to data list
