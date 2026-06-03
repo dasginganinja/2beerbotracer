@@ -68,6 +68,11 @@ twitch_channel_ref = None  # Will be set when bot is ready
 # Rate limiting: Twitch allows ~20 messages per 30 seconds for regular users
 # We'll be conservative and send 1 message per 1.5 seconds (20 per 30s)
 MESSAGE_RATE_LIMIT = 1.5  # seconds between messages
+signup_reminder_interval_seconds = float(
+    os.getenv("SIGNUP_REMINDER_INTERVAL_SECONDS", "180")
+)
+last_signup_activity_at = None
+signup_reminder_pending = True
 
 ENTRY_COMMANDS = ("!race", "!play", "!enter", "!join")
 ENTRY_EMOTE_PREFIXES = (
@@ -118,6 +123,12 @@ DUPLICATE_ENTRY_RESPONSE_TEMPLATES = (
     "You're covered, {author}. Car #{position} is yours.",
 )
 
+SIGNUP_REMINDER_TEMPLATES = (
+    "Race control is still accepting tiny machines. Use !play to grab a spot; {remaining_slots} {spot_word} left.",
+    "The grid still has room. Use !play if your car wants treadmill glory; {remaining_slots} {spot_word} left.",
+    "Signups are still open and the belt is waiting. Use !play to enter; {remaining_slots} {spot_word} left.",
+)
+
 START_RESPONSE_TEMPLATES = (
     "Starting grid locked: {lineup}",
     "Rolling out with: {lineup}",
@@ -163,6 +174,7 @@ REGISTRATION_CLOSED_RESPONSE = (
 start_response_counter = itertools.count()
 duplicate_entry_response_counter = itertools.count()
 welcome_message_counter = itertools.count()
+signup_reminder_counter = itertools.count()
 
 
 def is_entry_message(message: str) -> bool:
@@ -213,10 +225,12 @@ def classify_message(message: str) -> str:
 
 
 def reset_response_rotation() -> None:
-    global duplicate_entry_response_counter, start_response_counter, welcome_message_counter
+    global duplicate_entry_response_counter, start_response_counter
+    global welcome_message_counter, signup_reminder_counter
     duplicate_entry_response_counter = itertools.count()
     start_response_counter = itertools.count()
     welcome_message_counter = itertools.count()
+    signup_reminder_counter = itertools.count()
 
 
 def display_car_number(position: int) -> int:
@@ -265,6 +279,61 @@ def build_costreaming_status_message(is_registration_open: bool) -> str:
         "Costreaming mode enabled. Reading the chat. "
         f"Races are {status} currently."
     )
+
+
+def build_signup_reminder_message(remaining_slots: int, rotation_index: int) -> str:
+    spot_word = "spot" if remaining_slots == 1 else "spots"
+    template = SIGNUP_REMINDER_TEMPLATES[
+        rotation_index % len(SIGNUP_REMINDER_TEMPLATES)
+    ]
+    return template.format(remaining_slots=remaining_slots, spot_word=spot_word)
+
+
+def should_send_signup_reminder(
+    now: float,
+    last_activity_at: float,
+    reminder_sent: bool,
+    is_registration_open: bool,
+    entry_count: int,
+    interval_seconds: float,
+) -> bool:
+    return (
+        interval_seconds > 0
+        and reminder_sent
+        and is_registration_open
+        and entry_count < MAX_ENTRIES
+        and last_activity_at is not None
+        and now - last_activity_at >= interval_seconds
+    )
+
+
+def mark_signup_activity(monotonic_time: float) -> None:
+    global last_signup_activity_at, signup_reminder_pending
+    last_signup_activity_at = monotonic_time
+    signup_reminder_pending = True
+
+
+async def send_signup_reminder_if_idle(now: float) -> None:
+    global signup_reminder_pending
+
+    if not should_send_signup_reminder(
+        now=now,
+        last_activity_at=last_signup_activity_at,
+        reminder_sent=signup_reminder_pending,
+        is_registration_open=registration_open,
+        entry_count=len(entry_queue),
+        interval_seconds=signup_reminder_interval_seconds,
+    ):
+        return
+
+    remaining_slots = MAX_ENTRIES - len(entry_queue)
+    await print_everywhere(
+        build_signup_reminder_message(
+            remaining_slots,
+            next(signup_reminder_counter),
+        )
+    )
+    signup_reminder_pending = False
 
 
 async def send_welcome_message() -> None:
@@ -486,6 +555,7 @@ async def handle_message(message: str, author: str, twitch_message: TwitchMessag
             bang_out_queue_to_file(entry_file_abs)
 
             record_submission_entry(twitch_message=twitch_message)
+            mark_signup_activity(time.monotonic())
 
             await respond(build_entry_response(author, len(entry_queue)))
             if should_report_submission_stats():
@@ -501,6 +571,7 @@ async def handle_message(message: str, author: str, twitch_message: TwitchMessag
 
     elif command == COMMAND_OPEN_ENTRIES and is_mod:
         set_registration_open(True)
+        mark_signup_activity(time.monotonic())
         await respond("Entries are open.")
 
     elif command == COMMAND_CLOSE_ENTRIES and is_mod:
@@ -512,6 +583,7 @@ async def handle_message(message: str, author: str, twitch_message: TwitchMessag
         clear_queue()
         set_registration_open(True)
         reset_submission_stats(time.monotonic())
+        mark_signup_activity(time.monotonic())
         await respond("All entries have been cleared.")
 
     elif command == COMMAND_ENTRIES:
@@ -575,6 +647,7 @@ class Bot(commands.Bot):
     def __init__(self):
         super().__init__(token=access_token, client_id=client_id, nick=BOT_NAME, prefix='!', initial_channels=[TWITCH_CHANNEL])
         self._message_processor_task = None
+        self._signup_reminder_task = None
 
     async def event_ready(self):
         # Notify us when everything is ready!
@@ -596,8 +669,26 @@ class Bot(commands.Bot):
         # Start the message processor task
         self._message_processor_task = asyncio.create_task(self._process_message_queue())
         print('Message queue processor started')
+        if last_signup_activity_at is None:
+            mark_signup_activity(time.monotonic())
+        self._signup_reminder_task = asyncio.create_task(self._process_signup_reminders())
+        print('Signup reminder processor started')
 
         await send_welcome_message()
+
+    async def _process_signup_reminders(self):
+        """Background task that prompts chat when signups are idle."""
+        while True:
+            try:
+                sleep_seconds = max(1.0, signup_reminder_interval_seconds)
+                await asyncio.sleep(sleep_seconds)
+                await send_signup_reminder_if_idle(time.monotonic())
+            except asyncio.CancelledError:
+                print("Signup reminder processor cancelled")
+                break
+            except Exception as e:
+                print(f"Error in signup reminder processor: {e}")
+                await asyncio.sleep(1)
 
     async def _process_message_queue(self):
         """Background task that processes queued messages respecting Twitch rate limits."""

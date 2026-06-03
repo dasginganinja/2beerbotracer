@@ -226,6 +226,31 @@ async def test_entry_response_includes_car_number_and_preserves_author_case(monk
 
 
 @pytest.mark.asyncio
+async def test_accepted_entry_resets_signup_reminder_idle_timer(monkeypatch, tmp_path):
+    outputs = []
+
+    async def fake_print_everywhere(logmessage, twitch_message=None):
+        outputs.append(logmessage)
+
+    monkeypatch.setattr(trackracerbot, "print_everywhere", fake_print_everywhere)
+    monkeypatch.setattr(trackracerbot, "CHAT_CAPTURE_FILE", "")
+    monkeypatch.setattr(trackracerbot, "entry_file_abs", str(tmp_path / "entries.txt"))
+    monkeypatch.setattr(trackracerbot.time, "monotonic", lambda: 222.0)
+    monkeypatch.setattr(trackracerbot, "last_signup_activity_at", 100.0)
+    monkeypatch.setattr(trackracerbot, "signup_reminder_pending", False)
+
+    await trackracerbot.handle_message(
+        "!race",
+        "new_user",
+        twitch_message=FakeTwitchMessage(is_mod=False),
+    )
+
+    assert outputs == ["You're in, new_user. You're car #1."]
+    assert trackracerbot.last_signup_activity_at == 222.0
+    assert trackracerbot.signup_reminder_pending
+
+
+@pytest.mark.asyncio
 async def test_twenty_ninth_entry_response_uses_display_car_number(monkeypatch, tmp_path):
     outputs = []
 
@@ -314,6 +339,9 @@ async def test_clear_entries_reopens_registration(monkeypatch, tmp_path):
     monkeypatch.setattr(trackracerbot, "CHAT_CAPTURE_FILE", "")
     monkeypatch.setattr(trackracerbot, "entry_file_abs", str(tmp_path / "entries.txt"))
     monkeypatch.setattr(trackracerbot, "bot_state_file_abs", str(state_file))
+    monkeypatch.setattr(trackracerbot.time, "monotonic", lambda: 333.0)
+    monkeypatch.setattr(trackracerbot, "last_signup_activity_at", 100.0)
+    monkeypatch.setattr(trackracerbot, "signup_reminder_pending", False)
     trackracerbot.registration_open = False
     trackracerbot.entry_queue.extend(["racer_one", "racer_two"])
 
@@ -336,6 +364,8 @@ async def test_clear_entries_reopens_registration(monkeypatch, tmp_path):
     trackracerbot.registration_open = False
     trackracerbot.load_registration_state()
     assert trackracerbot.registration_open
+    assert trackracerbot.last_signup_activity_at == 333.0
+    assert trackracerbot.signup_reminder_pending
 
 
 @pytest.mark.asyncio
@@ -350,6 +380,9 @@ async def test_open_entries_reopens_registration_without_clearing_queue(monkeypa
     monkeypatch.setattr(trackracerbot, "CHAT_CAPTURE_FILE", "")
     monkeypatch.setattr(trackracerbot, "entry_file_abs", str(tmp_path / "entries.txt"))
     monkeypatch.setattr(trackracerbot, "bot_state_file_abs", str(state_file))
+    monkeypatch.setattr(trackracerbot.time, "monotonic", lambda: 444.0)
+    monkeypatch.setattr(trackracerbot, "last_signup_activity_at", 100.0)
+    monkeypatch.setattr(trackracerbot, "signup_reminder_pending", False)
     trackracerbot.registration_open = False
     trackracerbot.entry_queue.extend(["racer_one", "racer_two"])
 
@@ -372,6 +405,8 @@ async def test_open_entries_reopens_registration_without_clearing_queue(monkeypa
     trackracerbot.registration_open = False
     trackracerbot.load_registration_state()
     assert trackracerbot.registration_open
+    assert trackracerbot.last_signup_activity_at == 444.0
+    assert trackracerbot.signup_reminder_pending
 
 
 @pytest.mark.asyncio

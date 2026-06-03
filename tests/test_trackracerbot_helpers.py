@@ -187,6 +187,108 @@ def test_build_costreaming_status_message_reports_registration_state():
     )
 
 
+def test_build_signup_reminder_message_reports_remaining_slots():
+    assert trackracerbot.build_signup_reminder_message(12, 0) == (
+        "Race control is still accepting tiny machines. Use !play to grab a spot; 12 spots left."
+    )
+    assert trackracerbot.build_signup_reminder_message(1, 0) == (
+        "Race control is still accepting tiny machines. Use !play to grab a spot; 1 spot left."
+    )
+
+
+def test_should_send_signup_reminder_requires_open_registration_and_idle_time():
+    assert trackracerbot.should_send_signup_reminder(
+        now=400.0,
+        last_activity_at=100.0,
+        reminder_sent=True,
+        is_registration_open=True,
+        entry_count=10,
+        interval_seconds=180.0,
+    )
+    assert not trackracerbot.should_send_signup_reminder(
+        now=400.0,
+        last_activity_at=100.0,
+        reminder_sent=False,
+        is_registration_open=True,
+        entry_count=10,
+        interval_seconds=180.0,
+    )
+    assert not trackracerbot.should_send_signup_reminder(
+        now=279.0,
+        last_activity_at=100.0,
+        reminder_sent=True,
+        is_registration_open=True,
+        entry_count=10,
+        interval_seconds=180.0,
+    )
+    assert not trackracerbot.should_send_signup_reminder(
+        now=400.0,
+        last_activity_at=100.0,
+        reminder_sent=True,
+        is_registration_open=False,
+        entry_count=10,
+        interval_seconds=180.0,
+    )
+    assert not trackracerbot.should_send_signup_reminder(
+        now=400.0,
+        last_activity_at=100.0,
+        reminder_sent=True,
+        is_registration_open=True,
+        entry_count=trackracerbot.MAX_ENTRIES,
+        interval_seconds=180.0,
+    )
+    assert not trackracerbot.should_send_signup_reminder(
+        now=400.0,
+        last_activity_at=None,
+        reminder_sent=True,
+        is_registration_open=True,
+        entry_count=10,
+        interval_seconds=180.0,
+    )
+
+
+@pytest.mark.asyncio
+async def test_send_signup_reminder_if_idle_queues_message_and_resets_idle_timer(monkeypatch):
+    queue = trackracerbot.asyncio.Queue()
+    trackracerbot.reset_response_rotation()
+    trackracerbot.entry_queue.clear()
+    trackracerbot.entry_queue.extend(f"racer_{index}" for index in range(10))
+    monkeypatch.setattr(trackracerbot, "twitch_message_queue", queue)
+    monkeypatch.setattr(trackracerbot, "twitch_channel_ref", object())
+    monkeypatch.setattr(trackracerbot, "registration_open", True)
+    monkeypatch.setattr(trackracerbot, "signup_reminder_interval_seconds", 180.0)
+    monkeypatch.setattr(trackracerbot, "last_signup_activity_at", 100.0)
+    monkeypatch.setattr(trackracerbot, "signup_reminder_pending", True)
+
+    await trackracerbot.send_signup_reminder_if_idle(280.0)
+
+    assert queue.get_nowait() == (
+        "Race control is still accepting tiny machines. Use !play to grab a spot; 20 spots left."
+    )
+    assert trackracerbot.signup_reminder_pending is False
+
+
+@pytest.mark.asyncio
+async def test_send_signup_reminder_if_idle_sends_only_once_until_activity(monkeypatch):
+    queue = trackracerbot.asyncio.Queue()
+    trackracerbot.reset_response_rotation()
+    trackracerbot.entry_queue.clear()
+    monkeypatch.setattr(trackracerbot, "twitch_message_queue", queue)
+    monkeypatch.setattr(trackracerbot, "twitch_channel_ref", object())
+    monkeypatch.setattr(trackracerbot, "registration_open", True)
+    monkeypatch.setattr(trackracerbot, "signup_reminder_interval_seconds", 180.0)
+    monkeypatch.setattr(trackracerbot, "last_signup_activity_at", 100.0)
+    monkeypatch.setattr(trackracerbot, "signup_reminder_pending", True)
+
+    await trackracerbot.send_signup_reminder_if_idle(280.0)
+    await trackracerbot.send_signup_reminder_if_idle(1000.0)
+
+    assert queue.get_nowait() == (
+        "Race control is still accepting tiny machines. Use !play to grab a spot; 30 spots left."
+    )
+    assert queue.empty()
+
+
 @pytest.mark.asyncio
 async def test_send_welcome_message_queues_twitch_chat_message(monkeypatch):
     queue = trackracerbot.asyncio.Queue()
