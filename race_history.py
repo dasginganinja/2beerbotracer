@@ -13,7 +13,7 @@ def utc_now_iso() -> str:
 
 
 def initialize_database(db_path: str) -> None:
-    with sqlite3.connect(db_path) as connection:
+    with connect(db_path) as connection:
         connection.execute(
             """
             create table if not exists races (
@@ -39,7 +39,7 @@ def initialize_database(db_path: str) -> None:
                 display_number integer not null,
                 name text not null,
                 normalized_name text not null,
-                foreign key (race_id) references races(id)
+                foreign key (race_id) references races(id) on delete cascade
             )
             """
         )
@@ -68,6 +68,7 @@ def normalize_name(name: str) -> str:
 
 def connect(db_path: str):
     connection = sqlite3.connect(db_path)
+    connection.execute("pragma foreign_keys = on")
     connection.row_factory = sqlite3.Row
     return connection
 

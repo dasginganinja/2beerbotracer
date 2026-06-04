@@ -46,3 +46,18 @@ def test_start_race_stores_entry_snapshot_with_display_numbers(tmp_path):
     assert entries[0]["display_number"] == 1
     assert entries[28]["position"] == 29
     assert entries[28]["display_number"] == 69
+
+
+def test_deleting_race_cascades_to_race_entries(tmp_path):
+    db_path = tmp_path / "race-history.sqlite3"
+    race_history.initialize_database(str(db_path))
+    race_id = race_history.start_race(str(db_path), entries=["racer_one"])
+
+    with race_history.connect(str(db_path)) as connection:
+        connection.execute("delete from races where id = ?", (race_id,))
+        entry_count = connection.execute(
+            "select count(*) from race_entries where race_id = ?",
+            (race_id,),
+        ).fetchone()[0]
+
+    assert entry_count == 0
