@@ -612,3 +612,117 @@ def get_car_leaderboard(db_path: str, limit: int = 5) -> list[dict]:
             }
         )
     return leaderboard
+
+
+def get_stream_race_summary(
+    db_path: str, started_at_or_after_utc: str
+) -> dict:
+    initialize_database(db_path)
+    with connect(db_path) as connection:
+        counts = connection.execute(
+            """
+            select
+                count(*) as total,
+                sum(case when status = ? then 1 else 0 end) as completed,
+                sum(case when status = ? then 1 else 0 end) as pending,
+                sum(case when status in (?, ?) then 1 else 0 end) as skipped
+            from races
+            where started_at_utc >= ?
+            """,
+            (
+                STATUS_COMPLETED,
+                STATUS_PENDING,
+                STATUS_SKIPPED,
+                STATUS_UNKNOWN,
+                started_at_or_after_utc,
+            ),
+        ).fetchone()
+
+        winner_rows = connection.execute(
+            """
+            select
+                race_entries.name,
+                race_entries.normalized_name,
+                race_entries.display_number
+            from races
+            join race_entries
+                on race_entries.id = races.winner_entry_id
+            where races.started_at_utc >= ?
+                and races.status = ?
+            order by races.id asc
+            """,
+            (started_at_or_after_utc, STATUS_COMPLETED),
+        ).fetchall()
+
+        top_driver_rows = connection.execute(
+            """
+            select
+                race_entries.normalized_name,
+                (
+                    select latest_entry.name
+                    from races latest_race
+                    join race_entries latest_entry
+                        on latest_entry.id = latest_race.winner_entry_id
+                    where latest_race.started_at_utc >= ?
+                        and latest_race.status = ?
+                        and latest_entry.normalized_name =
+                            race_entries.normalized_name
+                    order by latest_race.id desc
+                    limit 1
+                ) as name,
+                count(*) as wins
+            from races
+            join race_entries
+                on race_entries.id = races.winner_entry_id
+            where races.started_at_utc >= ?
+                and races.status = ?
+            group by race_entries.normalized_name
+            order by wins desc, race_entries.normalized_name asc
+            limit 3
+            """,
+            (
+                started_at_or_after_utc,
+                STATUS_COMPLETED,
+                started_at_or_after_utc,
+                STATUS_COMPLETED,
+            ),
+        ).fetchall()
+
+        top_car_rows = connection.execute(
+            """
+            select
+                race_entries.display_number,
+                count(*) as wins
+            from races
+            join race_entries
+                on race_entries.id = races.winner_entry_id
+            where races.started_at_utc >= ?
+                and races.status = ?
+            group by race_entries.display_number
+            order by wins desc, race_entries.display_number asc
+            limit 3
+            """,
+            (started_at_or_after_utc, STATUS_COMPLETED),
+        ).fetchall()
+
+    return {
+        "total": counts["total"] or 0,
+        "completed": counts["completed"] or 0,
+        "pending": counts["pending"] or 0,
+        "skipped": counts["skipped"] or 0,
+        "winners": [
+            {"name": row["name"], "display_number": row["display_number"]}
+            for row in winner_rows
+        ],
+        "top_drivers": [
+            {"name": row["name"], "wins": row["wins"]}
+            for row in top_driver_rows
+        ],
+        "top_cars": [
+            {"display_number": row["display_number"], "wins": row["wins"]}
+            for row in top_car_rows
+        ],
+        "unique_winners": len(
+            {row["normalized_name"] for row in winner_rows}
+        ),
+    }

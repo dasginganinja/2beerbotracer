@@ -1,3 +1,5 @@
+from datetime import datetime, timedelta, timezone
+
 import trackracerbot
 import pytest
 
@@ -141,6 +143,65 @@ def test_leaderboard_response_formatting_limits_to_top_five():
         "4️⃣ racer_4 2W/10R 50.0% "
         "5️⃣ racer_5 1W/10R 50.0%."
     )
+
+
+def test_stream_race_stats_cutoff_uses_today_noon_after_noon():
+    eastern_daylight = timezone(timedelta(hours=-4))
+
+    assert trackracerbot.stream_race_stats_cutoff(
+        datetime(2026, 6, 5, 17, 0, tzinfo=timezone.utc),
+        eastern_daylight,
+    ) == datetime(2026, 6, 5, 16, 0, tzinfo=timezone.utc)
+
+
+def test_stream_race_stats_cutoff_uses_previous_noon_before_noon():
+    eastern_daylight = timezone(timedelta(hours=-4))
+
+    assert trackracerbot.stream_race_stats_cutoff(
+        datetime(2026, 6, 5, 14, 0, tzinfo=timezone.utc),
+        eastern_daylight,
+    ) == datetime(2026, 6, 4, 16, 0, tzinfo=timezone.utc)
+
+
+def test_build_stream_race_stats_messages_uses_one_or_two_messages():
+    populated_summary = {
+        "total": 5,
+        "completed": 3,
+        "pending": 1,
+        "skipped": 1,
+        "winners": [
+            {"name": "Alice", "display_number": 1},
+            {"name": "Dan", "display_number": 2},
+            {"name": "Alice", "display_number": 1},
+        ],
+        "top_drivers": [
+            {"name": "Alice", "wins": 2},
+            {"name": "Dan", "wins": 1},
+        ],
+        "top_cars": [
+            {"display_number": 1, "wins": 2},
+            {"display_number": 2, "wins": 1},
+        ],
+        "unique_winners": 2,
+    }
+    empty_summary = {
+        "total": 0,
+        "completed": 0,
+        "pending": 0,
+        "skipped": 0,
+        "winners": [],
+        "top_drivers": [],
+        "top_cars": [],
+        "unique_winners": 0,
+    }
+
+    assert trackracerbot.build_stream_race_stats_messages(populated_summary) == [
+        "Stream Race Stats 🏁 Races: 5 total / 3 completed / 1 pending / 1 skipped 🏆 Winners: 1️⃣ Alice #1 2️⃣ Dan #2 3️⃣ Alice #1",
+        "Stream Leaders 🏆 Drivers: Alice 2W / Dan 1W 🚗 Cars: #1 2W / #2 1W 🎯 Unique winners: 2",
+    ]
+    assert trackracerbot.build_stream_race_stats_messages(empty_summary) == [
+        "Stream Race Stats 🏁 Races: 0 total / 0 completed / 0 pending / 0 skipped 🏆 Winners: none"
+    ]
 
 
 def test_build_entry_response_rotates_and_preserves_author_case():

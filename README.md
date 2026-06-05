@@ -23,6 +23,7 @@ Viewers enter races from chat. Moderators lock the grid, clear it, reopen it, an
 | `!stats <name>` | Show another racer's stats. |
 | `!carstats <number>` | Show win stats for a car number across recorded races. |
 | `!carleaderboard` | Show the top winning car numbers. |
+| `!streamracestats` | Show current stream race totals, winners, and leaders. |
 | `!commands` | Print the public command list. |
 
 Some channel emotes also enter a viewer when they appear at the start of a chat message. The current list is maintained in `trackracerbot.py`.

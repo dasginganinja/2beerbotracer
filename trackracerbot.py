@@ -111,6 +111,7 @@ COMMAND_LEADERBOARD = "leaderboard"
 COMMAND_STATS = "stats"
 COMMAND_CAR_STATS = "car_stats"
 COMMAND_CAR_LEADERBOARD = "car_leaderboard"
+COMMAND_STREAM_RACE_STATS = "stream_race_stats"
 COMMAND_UNKNOWN = "unknown"
 
 COMMANDS_COMMAND = "!commands"
@@ -126,6 +127,7 @@ LEADERBOARD_COMMAND = "!leaderboard"
 STATS_COMMAND = "!stats"
 CAR_STATS_COMMAND = "!carstats"
 CAR_LEADERBOARD_COMMAND = "!carleaderboard"
+STREAM_RACE_STATS_COMMAND = "!streamracestats"
 
 LEADERBOARD_RANK_MARKERS = ("1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣")
 
@@ -361,6 +363,10 @@ def is_car_leaderboard_message(message: str) -> bool:
     return is_exact_or_space_command(message, CAR_LEADERBOARD_COMMAND)
 
 
+def is_stream_race_stats_message(message: str) -> bool:
+    return is_exact_or_space_command(message, STREAM_RACE_STATS_COMMAND)
+
+
 def classify_message(message: str) -> str:
     if is_commands_message(message):
         return COMMAND_COMMANDS
@@ -378,6 +384,8 @@ def classify_message(message: str) -> str:
         return COMMAND_CAR_STATS
     if is_car_leaderboard_message(message):
         return COMMAND_CAR_LEADERBOARD
+    if is_stream_race_stats_message(message):
+        return COMMAND_STREAM_RACE_STATS
     if is_entry_message(message):
         return COMMAND_ENTRY
     if is_start_message(message):
@@ -579,6 +587,74 @@ def build_car_leaderboard_response(leaderboard: list[dict]) -> str:
             f"{stats['win_percentage']:.1f}%"
         )
     return "Top cars: " + " ".join(parts) + "."
+
+
+def stream_race_stats_cutoff(
+    now_utc: datetime.datetime | None = None,
+    local_timezone=None,
+) -> datetime.datetime:
+    now = now_utc or datetime.datetime.now(datetime.timezone.utc)
+    if now.tzinfo is None:
+        now = now.replace(tzinfo=datetime.timezone.utc)
+    local_tz = local_timezone or datetime.datetime.now().astimezone().tzinfo
+    local_now = now.astimezone(local_tz)
+    local_noon = local_now.replace(
+        hour=12,
+        minute=0,
+        second=0,
+        microsecond=0,
+    )
+    if local_now < local_noon:
+        local_noon -= datetime.timedelta(days=1)
+    return local_noon.astimezone(datetime.timezone.utc)
+
+
+def format_stream_winners(winners: list[dict]) -> str:
+    if not winners:
+        return "none"
+    parts = []
+    for index, winner in enumerate(winners, start=1):
+        parts.append(
+            f"{leaderboard_rank_marker(index)} "
+            f"{winner['name']} #{winner['display_number']}"
+        )
+    return " ".join(parts)
+
+
+def format_stream_leader_parts(leaders: list[dict], label_key: str) -> str:
+    if not leaders:
+        return "none"
+    parts = []
+    for leader in leaders[:3]:
+        if label_key == "display_number":
+            label = f"#{leader[label_key]}"
+        else:
+            label = leader[label_key]
+        parts.append(f"{label} {leader['wins']}W")
+    return " / ".join(parts)
+
+
+def build_stream_race_stats_messages(summary: dict) -> list[str]:
+    messages = [
+        (
+            "Stream Race Stats 🏁 "
+            f"Races: {summary['total']} total / "
+            f"{summary['completed']} completed / "
+            f"{summary['pending']} pending / "
+            f"{summary['skipped']} skipped "
+            f"🏆 Winners: {format_stream_winners(summary['winners'])}"
+        )
+    ]
+
+    if summary["completed"] > 0:
+        messages.append(
+            "Stream Leaders 🏆 "
+            f"Drivers: {format_stream_leader_parts(summary['top_drivers'], 'name')} "
+            f"🚗 Cars: {format_stream_leader_parts(summary['top_cars'], 'display_number')} "
+            f"🎯 Unique winners: {summary['unique_winners']}"
+        )
+
+    return messages
 
 
 def build_welcome_message(
@@ -874,7 +950,7 @@ async def handle_message(message: str, author: str, twitch_message: TwitchMessag
     if command == COMMAND_COMMANDS:
         commands_message = (
             "Available commands: !play !entries !winner !leaderboard !stats "
-            "!carstats !carleaderboard"
+            "!carstats !carleaderboard !streamracestats"
         )
         if is_mod:
             commands_message += (
@@ -973,6 +1049,16 @@ async def handle_message(message: str, author: str, twitch_message: TwitchMessag
                 race_history.get_car_leaderboard(race_history_db_abs, limit=5)
             )
         )
+
+    elif command == COMMAND_STREAM_RACE_STATS:
+        cutoff = stream_race_stats_cutoff()
+        cutoff_iso = cutoff if isinstance(cutoff, str) else cutoff.isoformat()
+        summary = race_history.get_stream_race_summary(
+            race_history_db_abs,
+            cutoff_iso,
+        )
+        for response_message in build_stream_race_stats_messages(summary):
+            await respond(response_message)
 
     if command == COMMAND_ENTRY:
         if not registration_open:

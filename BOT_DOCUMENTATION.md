@@ -54,6 +54,7 @@ If all checks pass, the user is added to the queue and notified.
 | `!stats [name]` | Shows your stats, or another racer's stats when a name is provided |
 | `!carstats <number>` | Shows win stats for a car number across recorded races |
 | `!carleaderboard` | Shows the top winning car numbers |
+| `!streamracestats` | Shows current stream race totals, winners, and leaders |
 | `!race` / `!play` / `!enter` / `!join` | Submit a race entry |
 
 ---
