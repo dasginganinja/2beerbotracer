@@ -61,3 +61,77 @@ def test_deleting_race_cascades_to_race_entries(tmp_path):
         ).fetchone()[0]
 
     assert entry_count == 0
+
+
+def test_initialize_database_migrates_old_race_entries_fk_to_cascade(tmp_path):
+    db_path = tmp_path / "race-history.sqlite3"
+
+    with sqlite3.connect(db_path) as connection:
+        connection.execute(
+            """
+            create table races (
+                id integer primary key,
+                started_at_utc text not null,
+                ended_at_utc text,
+                entries_opened_at_utc text,
+                entries_closed_at_utc text,
+                status text not null,
+                winner_entry_id integer,
+                winner_name text,
+                created_by text,
+                updated_at_utc text not null
+            )
+            """
+        )
+        connection.execute(
+            """
+            create table race_entries (
+                id integer primary key,
+                race_id integer not null,
+                position integer not null,
+                display_number integer not null,
+                name text not null,
+                normalized_name text not null,
+                foreign key (race_id) references races(id)
+            )
+            """
+        )
+        race_id = connection.execute(
+            """
+            insert into races (
+                started_at_utc,
+                status,
+                updated_at_utc
+            )
+            values (?, ?, ?)
+            """,
+            (
+                "2026-06-04T20:00:00+00:00",
+                race_history.STATUS_PENDING,
+                "2026-06-04T20:00:00+00:00",
+            ),
+        ).lastrowid
+        connection.execute(
+            """
+            insert into race_entries (
+                race_id,
+                position,
+                display_number,
+                name,
+                normalized_name
+            )
+            values (?, ?, ?, ?, ?)
+            """,
+            (race_id, 1, 1, "racer_one", "racer_one"),
+        )
+
+    race_history.initialize_database(str(db_path))
+
+    with race_history.connect(str(db_path)) as connection:
+        connection.execute("delete from races where id = ?", (race_id,))
+        entry_count = connection.execute(
+            "select count(*) from race_entries where race_id = ?",
+            (race_id,),
+        ).fetchone()[0]
+
+    assert entry_count == 0

@@ -43,6 +43,8 @@ def initialize_database(db_path: str) -> None:
             )
             """
         )
+        if _race_entries_needs_cascade_migration(connection):
+            _migrate_race_entries_to_cascade(connection)
         connection.execute(
             "create index if not exists idx_races_status on races(status)"
         )
@@ -54,6 +56,58 @@ def initialize_database(db_path: str) -> None:
             "create index if not exists idx_race_entries_normalized_name "
             "on race_entries(normalized_name)"
         )
+
+
+def _race_entries_needs_cascade_migration(connection) -> bool:
+    foreign_keys = connection.execute(
+        "pragma foreign_key_list(race_entries)"
+    ).fetchall()
+    for foreign_key in foreign_keys:
+        if foreign_key["table"] == "races" and foreign_key["from"] == "race_id":
+            return foreign_key["on_delete"].upper() != "CASCADE"
+    return False
+
+
+def _migrate_race_entries_to_cascade(connection) -> None:
+    connection.commit()
+    connection.execute("pragma foreign_keys = off")
+    connection.execute("alter table race_entries rename to race_entries_old")
+    connection.execute(
+        """
+        create table race_entries (
+            id integer primary key,
+            race_id integer not null,
+            position integer not null,
+            display_number integer not null,
+            name text not null,
+            normalized_name text not null,
+            foreign key (race_id) references races(id) on delete cascade
+        )
+        """
+    )
+    connection.execute(
+        """
+        insert into race_entries (
+            id,
+            race_id,
+            position,
+            display_number,
+            name,
+            normalized_name
+        )
+        select
+            id,
+            race_id,
+            position,
+            display_number,
+            name,
+            normalized_name
+        from race_entries_old
+        """
+    )
+    connection.execute("drop table race_entries_old")
+    connection.commit()
+    connection.execute("pragma foreign_keys = on")
 
 
 def display_car_number(position: int) -> int:
