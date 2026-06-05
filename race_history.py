@@ -306,8 +306,9 @@ def get_racer_stats(db_path: str, name: str) -> dict:
             join race_entries
                 on race_entries.id = races.winner_entry_id
             where race_entries.normalized_name = ?
+                and races.status = ?
             """,
-            (normalized_name,),
+            (normalized_name, STATUS_COMPLETED),
         ).fetchone()[0]
 
     display_name = latest_entry["name"] if latest_entry is not None else name
@@ -449,11 +450,13 @@ def get_leaderboard(db_path: str, limit: int = 5) -> list[dict]:
             from race_entries
             left join races
                 on races.winner_entry_id = race_entries.id
+                and races.status = ?
             group by race_entries.normalized_name
+            having wins > 0
             order by wins desc, race_entries.normalized_name asc
             limit ?
             """,
-            (limit,),
+            (STATUS_COMPLETED, limit),
         ).fetchall()
 
     leaderboard = []

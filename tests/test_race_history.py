@@ -215,6 +215,24 @@ def test_leaderboard_orders_by_wins_then_name(tmp_path):
     ]
 
 
+def test_stats_and_leaderboard_ignore_residual_winner_for_unknown_race(tmp_path):
+    db_path = tmp_path / "race-history.sqlite3"
+    race_history.start_race(str(db_path), ["RacerOne"])
+    race_history.complete_latest_pending_race(str(db_path), "RacerOne")
+
+    with race_history.connect(str(db_path)) as connection:
+        connection.execute(
+            """
+            update races
+            set status = ?
+            """,
+            (race_history.STATUS_UNKNOWN,),
+        )
+
+    assert race_history.get_racer_stats(str(db_path), "RacerOne")["wins"] == 0
+    assert race_history.get_leaderboard(str(db_path)) == []
+
+
 def test_pending_race_blocks_next_start_when_snapshot_differs(tmp_path):
     db_path = tmp_path / "race-history.sqlite3"
     race_history.start_race(str(db_path), ["RacerOne"])
