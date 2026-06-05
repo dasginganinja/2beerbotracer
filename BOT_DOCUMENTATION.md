@@ -52,6 +52,9 @@ If all checks pass, the user is added to the queue and notified.
 | `!winner` | Shows the latest race winner or latest race winner status |
 | `!leaderboard` | Shows the top 5 winners with compact stats |
 | `!stats [name]` | Shows your stats, or another racer's stats when a name is provided |
+| `!carstats <number>` | Shows win stats for a car number across recorded races |
+| `!carleaderboard` | Shows the top winning car numbers |
+| `!streamracestats` | Shows current stream race totals, winners, and leaders |
 | `!race` / `!play` / `!enter` / `!join` | Submit a race entry |
 
 ---
