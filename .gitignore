@@ -4,6 +4,8 @@
 .venv-codex/
 /entries.txt
 /bot-state.json
+race-history.sqlite3
+race-history.sqlite3-*
 __pycache__/
 *.py[cod]
 debug/*.jsonl

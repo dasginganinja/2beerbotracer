@@ -100,6 +100,7 @@ python -m py_compile trackracerbot.py testing.py
 - `artmannJudy`
 - `x100pr3Hndoclap52`
 - `x2beerShrek`
+- `x2beerRace`
 - `avoidr3Hotdogman`
 - `spacec122GoodVibes`
 - `artmannNatmar`

@@ -17,6 +17,7 @@ import pytz
 import websockets
 import json
 import re
+import race_history
 
 # Load the values from the .env file
 load_dotenv()
@@ -48,6 +49,12 @@ bot_state_file = os.getenv("BOT_STATE_FILE")
 if bot_state_file is None:
     bot_state_file = os.path.join(os.path.dirname(entry_file_abs), "bot-state.json")
 bot_state_file_abs = os.path.abspath(bot_state_file)
+race_history_db = os.getenv("RACE_HISTORY_DB")
+if race_history_db is None:
+    race_history_db = os.path.join(
+        os.path.dirname(entry_file_abs), "race-history.sqlite3"
+    )
+race_history_db_abs = os.path.abspath(race_history_db)
 
 # Set maximum number of entries
 MAX_ENTRIES = 30
@@ -58,6 +65,10 @@ submission_stats = {
     "accepted_entries": 0,
     "twitch_entries": 0,
     "reported": False,
+}
+submission_window = {
+    "entries_opened_at_utc": None,
+    "entries_closed_at_utc": None,
 }
 
 # Message queue for Twitch chat to handle rate limiting
@@ -79,6 +90,7 @@ ENTRY_EMOTE_PREFIXES = (
     "artmannJudy",
     "x100pr3Hndoclap52",
     "x2beerShrek",
+    "x2beerRace",
     "avoidr3Hotdogman",
     "spacec122GoodVibes",
     "artmannNatmar",
@@ -93,6 +105,10 @@ COMMAND_CLOSE_ENTRIES = "close_entries"
 COMMAND_CLEAR_ENTRIES = "clear_entries"
 COMMAND_ENTRIES = "entries"
 COMMAND_ENTRY_LOOKUP = "entry_lookup"
+COMMAND_WINNER = "winner"
+COMMAND_SET_LAST_WINNER = "set_last_winner"
+COMMAND_LEADERBOARD = "leaderboard"
+COMMAND_STATS = "stats"
 COMMAND_UNKNOWN = "unknown"
 
 COMMANDS_COMMAND = "!commands"
@@ -102,6 +118,10 @@ CLOSE_ENTRIES_COMMAND = "!closeentries"
 CLEAR_ENTRIES_COMMAND = "!clearentries"
 ENTRIES_COMMAND = "!entries"
 ENTRY_LOOKUP_COMMAND = "!entry"
+WINNER_COMMAND = "!winner"
+SET_LAST_WINNER_COMMAND = "!setlastwinner"
+LEADERBOARD_COMMAND = "!leaderboard"
+STATS_COMMAND = "!stats"
 
 ENTRY_RESPONSE_TEMPLATES = (
     "You're in, {author}. You're car #{position}.",
@@ -306,11 +326,40 @@ def is_entry_lookup_message(message: str) -> bool:
     )
 
 
+def is_exact_or_space_command(message: str, command: str) -> bool:
+    message_lower = message.lower()
+    return message_lower == command or message_lower.startswith(command + " ")
+
+
+def is_winner_message(message: str) -> bool:
+    return is_exact_or_space_command(message, WINNER_COMMAND)
+
+
+def is_set_last_winner_message(message: str) -> bool:
+    return is_exact_or_space_command(message, SET_LAST_WINNER_COMMAND)
+
+
+def is_leaderboard_message(message: str) -> bool:
+    return is_exact_or_space_command(message, LEADERBOARD_COMMAND)
+
+
+def is_stats_message(message: str) -> bool:
+    return is_exact_or_space_command(message, STATS_COMMAND)
+
+
 def classify_message(message: str) -> str:
     if is_commands_message(message):
         return COMMAND_COMMANDS
     if is_entry_lookup_message(message):
         return COMMAND_ENTRY_LOOKUP
+    if is_winner_message(message):
+        return COMMAND_WINNER
+    if is_set_last_winner_message(message):
+        return COMMAND_SET_LAST_WINNER
+    if is_leaderboard_message(message):
+        return COMMAND_LEADERBOARD
+    if is_stats_message(message):
+        return COMMAND_STATS
     if is_entry_message(message):
         return COMMAND_ENTRY
     if is_start_message(message):
@@ -413,6 +462,63 @@ def build_registration_closed_response(author: str) -> str:
     return REGISTRATION_CLOSED_RESPONSE.format(author=author)
 
 
+def format_racer_stats(stats: dict) -> str:
+    return (
+        f"{stats['name']}: {stats['wins']}W / "
+        f"{stats['total_races']}R / {stats['win_percentage']:.1f}%."
+    )
+
+
+def format_inline_racer_stats(stats: dict) -> str:
+    return f"{stats['wins']}W / {stats['total_races']}R / {stats['win_percentage']:.1f}%"
+
+
+def build_latest_winner_response(db_path: str) -> str:
+    latest = race_history.get_latest_race(db_path)
+    if latest is None:
+        return "No races recorded yet."
+    if latest["status"] == race_history.STATUS_PENDING:
+        return "Last race has no winner recorded yet."
+    if latest["status"] == race_history.STATUS_SKIPPED:
+        return "Last race was skipped."
+    if latest["status"] == race_history.STATUS_UNKNOWN:
+        return "Last race winner is unknown."
+    stats = race_history.get_racer_stats(db_path, latest["winner_name"])
+    return f"Last winner: {latest['winner_name']}. {format_inline_racer_stats(stats)}."
+
+
+def latest_winner_json() -> dict:
+    latest = race_history.get_latest_race(race_history_db_abs)
+    if latest is None:
+        return {"status": "none", "winner": None, "stats": None}
+    if latest["status"] != race_history.STATUS_COMPLETED:
+        return {"status": latest["status"], "winner": None, "stats": None}
+    stats = race_history.get_racer_stats(race_history_db_abs, latest["winner_name"])
+    return {
+        "status": latest["status"],
+        "winner": latest["winner_name"],
+        "stats": stats,
+    }
+
+
+def build_winner_recorded_response(prefix: str, result: dict) -> str:
+    stats = result["stats"]
+    return f"{prefix}: {result['winner_name']}. {format_inline_racer_stats(stats)}."
+
+
+def build_leaderboard_response(leaderboard: list[dict]) -> str:
+    if not leaderboard:
+        return "No completed winners yet."
+    parts = []
+    for index, stats in enumerate(leaderboard[:5], start=1):
+        parts.append(
+            f"{index}. {stats['name']} "
+            f"{stats['wins']}W/{stats['total_races']}R "
+            f"{stats['win_percentage']:.1f}%"
+        )
+    return "Top winners: " + "; ".join(parts) + "."
+
+
 def build_welcome_message(
     bot_name: str, rotation_index: int, is_registration_open: bool
 ) -> str:
@@ -506,6 +612,7 @@ def write_registration_state() -> None:
                 {
                     "registration_open": registration_open,
                     "submission_stats": submission_stats,
+                    "submission_window": submission_window,
                 },
                 state_file,
             )
@@ -513,10 +620,11 @@ def write_registration_state() -> None:
         print(f"Could not write bot state: {e}")
 
 
-def set_registration_open(is_open: bool) -> None:
+def set_registration_open(is_open: bool, persist: bool = True) -> None:
     global registration_open
     registration_open = is_open and len(entry_queue) < MAX_ENTRIES
-    write_registration_state()
+    if persist:
+        write_registration_state()
 
 
 def load_registration_state() -> None:
@@ -544,6 +652,14 @@ def load_registration_state() -> None:
             )
             submission_stats["reported"] = bool(
                 loaded_submission_stats.get("reported", False)
+            )
+        loaded_submission_window = state.get("submission_window", {})
+        if isinstance(loaded_submission_window, dict):
+            submission_window["entries_opened_at_utc"] = loaded_submission_window.get(
+                "entries_opened_at_utc"
+            )
+            submission_window["entries_closed_at_utc"] = loaded_submission_window.get(
+                "entries_closed_at_utc"
             )
     except (OSError, ValueError, TypeError) as e:
         print(f"Could not read bot state: {e}")
@@ -607,6 +723,19 @@ def reset_submission_stats(started_at: float = None, persist: bool = True) -> No
     submission_stats["accepted_entries"] = 0
     submission_stats["twitch_entries"] = 0
     submission_stats["reported"] = False
+    if persist:
+        write_registration_state()
+
+
+def mark_entries_opened(opened_at_utc: str = None, persist: bool = True) -> None:
+    submission_window["entries_opened_at_utc"] = opened_at_utc or race_history.utc_now_iso()
+    submission_window["entries_closed_at_utc"] = None
+    if persist:
+        write_registration_state()
+
+
+def mark_entries_closed(closed_at_utc: str = None, persist: bool = True) -> None:
+    submission_window["entries_closed_at_utc"] = closed_at_utc or race_history.utc_now_iso()
     if persist:
         write_registration_state()
 
@@ -681,9 +810,12 @@ async def handle_message(message: str, author: str, twitch_message: TwitchMessag
         await print_everywhere(logmessage, twitch_message=twitch_message)
 
     if command == COMMAND_COMMANDS:
-        commands_message = "Available commands: !play"
+        commands_message = "Available commands: !play !entries !winner !leaderboard !stats"
         if is_mod:
-            commands_message += " // Mod Commands: !start !openentries !closeentries !clearentries"
+            commands_message += (
+                " // Mod Commands: !start !openentries !closeentries !clearentries "
+                "!winner <number|name> !setlastwinner"
+            )
         await respond(commands_message)
 
     elif command == COMMAND_ENTRY_LOOKUP:
@@ -692,6 +824,70 @@ async def handle_message(message: str, author: str, twitch_message: TwitchMessag
             await respond(build_entry_lookup_response(search_text, entry_queue))
         else:
             await respond(build_own_entry_lookup_response(author, entry_queue))
+
+    elif command == COMMAND_WINNER:
+        winner_query = message[len(WINNER_COMMAND):].strip()
+        if not winner_query:
+            await respond(build_latest_winner_response(race_history_db_abs))
+        elif is_mod:
+            result = race_history.complete_latest_pending_race(
+                race_history_db_abs,
+                winner_query,
+            )
+            if result is None:
+                await respond("No pending race to record a winner for.")
+            elif result.get("error") == "winner_not_found":
+                await respond(f"No entry found for {winner_query}.")
+            else:
+                await respond(build_winner_recorded_response("Winner recorded", result))
+
+    elif command == COMMAND_SET_LAST_WINNER and is_mod:
+        result_query = message[len(SET_LAST_WINNER_COMMAND):].strip()
+        if not result_query:
+            await respond("Usage: !setlastwinner {number, name, skipped, or unknown}")
+        else:
+            result = race_history.set_latest_race_result(
+                race_history_db_abs,
+                result_query,
+            )
+            if result is None:
+                await respond("No races recorded yet.")
+            elif result.get("error") == "winner_not_found":
+                await respond(f"No entry found for {result_query}.")
+            elif result["status"] == race_history.STATUS_SKIPPED:
+                await respond("Last race marked skipped.")
+            elif result["status"] == race_history.STATUS_UNKNOWN:
+                await respond("Last race winner marked unknown.")
+            else:
+                await respond(build_winner_recorded_response("Last winner updated", result))
+
+    elif command == COMMAND_LEADERBOARD:
+        await respond(
+            build_leaderboard_response(
+                race_history.get_leaderboard(race_history_db_abs, limit=5)
+            )
+        )
+
+    elif command == COMMAND_STATS:
+        stats_query = message[len(STATS_COMMAND):].strip() or author
+        if stats_query.isdigit():
+            latest = race_history.get_latest_race(race_history_db_abs)
+            if latest is None:
+                await respond(f"No racer found for car #{stats_query}.")
+            else:
+                entries = race_history.get_race_entries(race_history_db_abs, latest["id"])
+                entry = race_history.find_entry_by_display_number(entries, int(stats_query))
+                if entry is None:
+                    await respond(f"No racer found for car #{stats_query}.")
+                else:
+                    stats = race_history.get_racer_stats(race_history_db_abs, entry["name"])
+                    await respond(format_racer_stats(stats))
+        else:
+            stats = race_history.get_racer_stats(race_history_db_abs, stats_query)
+            if stats["total_races"] == 0:
+                await respond(f"No race stats found for {stats['name']}.")
+            else:
+                await respond(format_racer_stats(stats))
 
     if command == COMMAND_ENTRY:
         if not registration_open:
@@ -750,24 +946,87 @@ async def handle_message(message: str, author: str, twitch_message: TwitchMessag
 
     elif command == COMMAND_START and is_mod:
         lineup_names = list(itertools.islice(entry_queue, 0, MAX_ENTRIES))
+        if not lineup_names:
+            await respond("No entries to start.")
+            write_chat_capture_record(
+                build_twitch_capture_record(
+                    message=message,
+                    author=author,
+                    command=command,
+                    is_mod=is_mod,
+                    bot_outputs=capture_outputs,
+                    twitch_message=twitch_message,
+                )
+            )
+            return
+
+        pending_race_to_delete = None
+        pending_race = race_history.get_latest_pending_race(race_history_db_abs)
+        if pending_race is not None:
+            pending_entries = race_history.get_race_entries(
+                race_history_db_abs,
+                pending_race["id"],
+            )
+            pending_lineup = [
+                race_history.normalize_name(entry["name"]) for entry in pending_entries
+            ]
+            requested_lineup = [
+                race_history.normalize_name(name) for name in lineup_names
+            ]
+            if pending_lineup == requested_lineup:
+                pending_race_to_delete = pending_race["id"]
+            else:
+                await respond(
+                    "Record the last winner first: !winner {number or name}. "
+                    "Use !setlastwinner skipped if there was no winner."
+                )
+                write_chat_capture_record(
+                    build_twitch_capture_record(
+                        message=message,
+                        author=author,
+                        command=command,
+                        is_mod=is_mod,
+                        bot_outputs=capture_outputs,
+                        twitch_message=twitch_message,
+                    )
+                )
+                return
+
+        mark_entries_closed(persist=False)
+        race_history.start_race(
+            race_history_db_abs,
+            lineup_names,
+            entries_opened_at_utc=submission_window["entries_opened_at_utc"],
+            entries_closed_at_utc=submission_window["entries_closed_at_utc"],
+            created_by=author,
+        )
+        if pending_race_to_delete is not None:
+            race_history.delete_race(race_history_db_abs, pending_race_to_delete)
         await respond(build_start_response(lineup_names, next(start_response_counter)))
-        set_registration_open(False)
+        set_registration_open(False, persist=False)
+        write_registration_state()
 
     elif command == COMMAND_OPEN_ENTRIES and is_mod:
-        set_registration_open(True)
+        set_registration_open(True, persist=False)
+        mark_entries_opened(persist=False)
         mark_signup_activity(time.monotonic())
+        write_registration_state()
         await respond("Entries are open.")
 
     elif command == COMMAND_CLOSE_ENTRIES and is_mod:
-        set_registration_open(False)
+        set_registration_open(False, persist=False)
+        mark_entries_closed(persist=False)
+        write_registration_state()
         await respond("entries closed")
                 
     elif command == COMMAND_CLEAR_ENTRIES and is_mod:
         # Clear the queue
         clear_queue()
-        set_registration_open(True)
-        reset_submission_stats(time.monotonic())
+        set_registration_open(True, persist=False)
+        reset_submission_stats(time.monotonic(), persist=False)
+        mark_entries_opened(persist=False)
         mark_signup_activity(time.monotonic())
+        write_registration_state()
         await respond("All entries have been cleared.")
 
     elif command == COMMAND_ENTRIES:
@@ -1073,8 +1332,7 @@ async def socket_comms(websocket, path):
             # Generate JSON response
             socket_data = entries_json()
         elif msg == "latest_winner":
-            global latest_winner
-            socket_data = latest_winner
+            socket_data = json.dumps(latest_winner_json(), default=obj_dict)
         
         try:
             await websocket.send(socket_data)
