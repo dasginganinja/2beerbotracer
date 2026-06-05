@@ -66,6 +66,10 @@ submission_stats = {
     "twitch_entries": 0,
     "reported": False,
 }
+submission_window = {
+    "entries_opened_at_utc": None,
+    "entries_closed_at_utc": None,
+}
 
 # Message queue for Twitch chat to handle rate limiting
 # Will be initialized when Bot is ready (needs event loop)
@@ -574,6 +578,7 @@ def write_registration_state() -> None:
                 {
                     "registration_open": registration_open,
                     "submission_stats": submission_stats,
+                    "submission_window": submission_window,
                 },
                 state_file,
             )
@@ -612,6 +617,14 @@ def load_registration_state() -> None:
             )
             submission_stats["reported"] = bool(
                 loaded_submission_stats.get("reported", False)
+            )
+        loaded_submission_window = state.get("submission_window", {})
+        if isinstance(loaded_submission_window, dict):
+            submission_window["entries_opened_at_utc"] = loaded_submission_window.get(
+                "entries_opened_at_utc"
+            )
+            submission_window["entries_closed_at_utc"] = loaded_submission_window.get(
+                "entries_closed_at_utc"
             )
     except (OSError, ValueError, TypeError) as e:
         print(f"Could not read bot state: {e}")
@@ -677,6 +690,17 @@ def reset_submission_stats(started_at: float = None, persist: bool = True) -> No
     submission_stats["reported"] = False
     if persist:
         write_registration_state()
+
+
+def mark_entries_opened(opened_at_utc: str = None) -> None:
+    submission_window["entries_opened_at_utc"] = opened_at_utc or race_history.utc_now_iso()
+    submission_window["entries_closed_at_utc"] = None
+    write_registration_state()
+
+
+def mark_entries_closed(closed_at_utc: str = None) -> None:
+    submission_window["entries_closed_at_utc"] = closed_at_utc or race_history.utc_now_iso()
+    write_registration_state()
 
 
 def format_elapsed_time(seconds: float) -> str:
@@ -818,16 +842,74 @@ async def handle_message(message: str, author: str, twitch_message: TwitchMessag
 
     elif command == COMMAND_START and is_mod:
         lineup_names = list(itertools.islice(entry_queue, 0, MAX_ENTRIES))
+        if not lineup_names:
+            await respond("No entries to start.")
+            write_chat_capture_record(
+                build_twitch_capture_record(
+                    message=message,
+                    author=author,
+                    command=command,
+                    is_mod=is_mod,
+                    bot_outputs=capture_outputs,
+                    twitch_message=twitch_message,
+                )
+            )
+            return
+
+        pending_race_to_delete = None
+        pending_race = race_history.get_latest_pending_race(race_history_db_abs)
+        if pending_race is not None:
+            pending_entries = race_history.get_race_entries(
+                race_history_db_abs,
+                pending_race["id"],
+            )
+            pending_lineup = [
+                race_history.normalize_name(entry["name"]) for entry in pending_entries
+            ]
+            requested_lineup = [
+                race_history.normalize_name(name) for name in lineup_names
+            ]
+            if pending_lineup == requested_lineup:
+                pending_race_to_delete = pending_race["id"]
+            else:
+                await respond(
+                    "Record the last winner first: !winner {number or name}. "
+                    "Use !setlastwinner skipped if there was no winner."
+                )
+                write_chat_capture_record(
+                    build_twitch_capture_record(
+                        message=message,
+                        author=author,
+                        command=command,
+                        is_mod=is_mod,
+                        bot_outputs=capture_outputs,
+                        twitch_message=twitch_message,
+                    )
+                )
+                return
+
+        mark_entries_closed()
+        race_history.start_race(
+            race_history_db_abs,
+            lineup_names,
+            entries_opened_at_utc=submission_window["entries_opened_at_utc"],
+            entries_closed_at_utc=submission_window["entries_closed_at_utc"],
+            created_by=author,
+        )
+        if pending_race_to_delete is not None:
+            race_history.delete_race(race_history_db_abs, pending_race_to_delete)
         await respond(build_start_response(lineup_names, next(start_response_counter)))
         set_registration_open(False)
 
     elif command == COMMAND_OPEN_ENTRIES and is_mod:
         set_registration_open(True)
+        mark_entries_opened()
         mark_signup_activity(time.monotonic())
         await respond("Entries are open.")
 
     elif command == COMMAND_CLOSE_ENTRIES and is_mod:
         set_registration_open(False)
+        mark_entries_closed()
         await respond("entries closed")
                 
     elif command == COMMAND_CLEAR_ENTRIES and is_mod:
@@ -835,6 +917,7 @@ async def handle_message(message: str, author: str, twitch_message: TwitchMessag
         clear_queue()
         set_registration_open(True)
         reset_submission_stats(time.monotonic())
+        mark_entries_opened()
         mark_signup_activity(time.monotonic())
         await respond("All entries have been cleared.")
 

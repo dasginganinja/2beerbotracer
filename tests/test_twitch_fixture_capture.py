@@ -17,16 +17,29 @@ class FakeTwitchMessage:
 
 
 @pytest.fixture(autouse=True)
-def clear_entry_queue():
+def clear_entry_queue(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        trackracerbot,
+        "race_history_db_abs",
+        str(tmp_path / "race-history.sqlite3"),
+    )
     trackracerbot.entry_queue.clear()
     trackracerbot.reset_submission_stats(None)
+    trackracerbot.submission_window["entries_opened_at_utc"] = None
+    trackracerbot.submission_window["entries_closed_at_utc"] = None
     trackracerbot.reset_response_rotation()
     trackracerbot.registration_open = True
     yield
     trackracerbot.entry_queue.clear()
     trackracerbot.reset_submission_stats(None)
+    trackracerbot.submission_window["entries_opened_at_utc"] = None
+    trackracerbot.submission_window["entries_closed_at_utc"] = None
     trackracerbot.reset_response_rotation()
     trackracerbot.registration_open = True
+
+
+def test_twitch_fixture_uses_temp_race_history_db_by_default(tmp_path):
+    assert str(tmp_path) in trackracerbot.race_history_db_abs
 
 
 def test_chat_capture_is_disabled_when_file_path_is_empty(monkeypatch):
@@ -396,6 +409,137 @@ async def test_start_response_rotates_and_lowercases_lineup(monkeypatch, tmp_pat
     )
 
     assert outputs == ["Starting grid locked: racerone, racertwo"]
+
+
+@pytest.mark.asyncio
+async def test_start_with_no_entries_is_blocked(monkeypatch, tmp_path):
+    outputs = []
+
+    async def fake_print_everywhere(logmessage, twitch_message=None):
+        outputs.append(logmessage)
+
+    monkeypatch.setattr(trackracerbot, "print_everywhere", fake_print_everywhere)
+    monkeypatch.setattr(trackracerbot, "CHAT_CAPTURE_FILE", "")
+    monkeypatch.setattr(
+        trackracerbot, "race_history_db_abs", str(tmp_path / "race-history.sqlite3")
+    )
+
+    await trackracerbot.handle_message(
+        "!start",
+        "example_mod",
+        twitch_message=FakeTwitchMessage(is_mod=True),
+    )
+
+    assert outputs == ["No entries to start."]
+    assert (
+        trackracerbot.race_history.get_latest_race(trackracerbot.race_history_db_abs)
+        is None
+    )
+
+
+@pytest.mark.asyncio
+async def test_start_creates_pending_race_snapshot(monkeypatch, tmp_path):
+    outputs = []
+
+    async def fake_print_everywhere(logmessage, twitch_message=None):
+        outputs.append(logmessage)
+
+    monkeypatch.setattr(trackracerbot, "print_everywhere", fake_print_everywhere)
+    monkeypatch.setattr(trackracerbot, "CHAT_CAPTURE_FILE", "")
+    monkeypatch.setattr(trackracerbot, "entry_file_abs", str(tmp_path / "entries.txt"))
+    monkeypatch.setattr(
+        trackracerbot, "bot_state_file_abs", str(tmp_path / "bot-state.json")
+    )
+    monkeypatch.setattr(
+        trackracerbot, "race_history_db_abs", str(tmp_path / "race-history.sqlite3")
+    )
+    trackracerbot.entry_queue.extend(["RacerONE", "RACERTwo"])
+
+    await trackracerbot.handle_message(
+        "!start",
+        "example_mod",
+        twitch_message=FakeTwitchMessage(is_mod=True),
+    )
+
+    latest = trackracerbot.race_history.get_latest_race(trackracerbot.race_history_db_abs)
+    entries = trackracerbot.race_history.get_race_entries(
+        trackracerbot.race_history_db_abs,
+        latest["id"],
+    )
+    assert outputs == ["Starting grid locked: racerone, racertwo"]
+    assert latest["status"] == trackracerbot.race_history.STATUS_PENDING
+    assert [entry["name"] for entry in entries] == ["RacerONE", "RACERTwo"]
+
+
+@pytest.mark.asyncio
+async def test_start_same_lineup_replaces_pending_race(monkeypatch, tmp_path):
+    outputs = []
+
+    async def fake_print_everywhere(logmessage, twitch_message=None):
+        outputs.append(logmessage)
+
+    monkeypatch.setattr(trackracerbot, "print_everywhere", fake_print_everywhere)
+    monkeypatch.setattr(trackracerbot, "CHAT_CAPTURE_FILE", "")
+    monkeypatch.setattr(trackracerbot, "entry_file_abs", str(tmp_path / "entries.txt"))
+    monkeypatch.setattr(
+        trackracerbot, "bot_state_file_abs", str(tmp_path / "bot-state.json")
+    )
+    monkeypatch.setattr(
+        trackracerbot, "race_history_db_abs", str(tmp_path / "race-history.sqlite3")
+    )
+    trackracerbot.entry_queue.extend(["RacerONE", "RACERTwo"])
+
+    await trackracerbot.handle_message(
+        "!start", "example_mod", twitch_message=FakeTwitchMessage(is_mod=True)
+    )
+    first_race = trackracerbot.race_history.get_latest_race(
+        trackracerbot.race_history_db_abs
+    )
+    await trackracerbot.handle_message(
+        "!start", "example_mod", twitch_message=FakeTwitchMessage(is_mod=True)
+    )
+    second_race = trackracerbot.race_history.get_latest_race(
+        trackracerbot.race_history_db_abs
+    )
+
+    assert outputs == [
+        "Starting grid locked: racerone, racertwo",
+        "Rolling out with: racerone, racertwo",
+    ]
+    assert second_race["id"] != first_race["id"]
+
+
+@pytest.mark.asyncio
+async def test_start_changed_lineup_requires_previous_winner(monkeypatch, tmp_path):
+    outputs = []
+
+    async def fake_print_everywhere(logmessage, twitch_message=None):
+        outputs.append(logmessage)
+
+    monkeypatch.setattr(trackracerbot, "print_everywhere", fake_print_everywhere)
+    monkeypatch.setattr(trackracerbot, "CHAT_CAPTURE_FILE", "")
+    monkeypatch.setattr(trackracerbot, "entry_file_abs", str(tmp_path / "entries.txt"))
+    monkeypatch.setattr(
+        trackracerbot, "bot_state_file_abs", str(tmp_path / "bot-state.json")
+    )
+    monkeypatch.setattr(
+        trackracerbot, "race_history_db_abs", str(tmp_path / "race-history.sqlite3")
+    )
+    trackracerbot.entry_queue.extend(["RacerONE"])
+
+    await trackracerbot.handle_message(
+        "!start", "example_mod", twitch_message=FakeTwitchMessage(is_mod=True)
+    )
+    trackracerbot.entry_queue.clear()
+    trackracerbot.entry_queue.extend(["DifferentRacer"])
+    await trackracerbot.handle_message(
+        "!start", "example_mod", twitch_message=FakeTwitchMessage(is_mod=True)
+    )
+
+    assert outputs[-1] == (
+        "Record the last winner first: !winner {number or name}. "
+        "Use !setlastwinner skipped if there was no winner."
+    )
 
 
 @pytest.mark.asyncio
