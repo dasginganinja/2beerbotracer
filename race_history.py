@@ -1,4 +1,5 @@
 import sqlite3
+from contextlib import contextmanager
 from datetime import datetime, timezone
 
 
@@ -120,11 +121,19 @@ def normalize_name(name: str) -> str:
     return name.strip().lstrip("@").lower()
 
 
+@contextmanager
 def connect(db_path: str):
     connection = sqlite3.connect(db_path)
     connection.execute("pragma foreign_keys = on")
     connection.row_factory = sqlite3.Row
-    return connection
+    try:
+        yield connection
+        connection.commit()
+    except Exception:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
 
 
 def start_race(
@@ -293,7 +302,7 @@ def get_racer_stats(db_path: str, name: str) -> dict:
         ).fetchone()
         total_races = connection.execute(
             """
-            select count(*)
+            select count(distinct race_id)
             from race_entries
             where normalized_name = ?
             """,
@@ -445,7 +454,7 @@ def get_leaderboard(db_path: str, limit: int = 5) -> list[dict]:
                     order by latest_entry.race_id desc, latest_entry.id desc
                     limit 1
                 ) as name,
-                count(*) as total_races,
+                count(distinct race_entries.race_id) as total_races,
                 count(races.winner_entry_id) as wins
             from race_entries
             left join races

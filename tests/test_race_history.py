@@ -1,5 +1,7 @@
 import sqlite3
 
+import pytest
+
 import race_history
 
 
@@ -71,6 +73,20 @@ def test_delete_race_api_cascades_to_race_entries(tmp_path):
 
     assert race_history.get_latest_race(str(db_path)) is None
     assert race_history.get_race_entries(str(db_path), race_id) == []
+
+
+def test_connect_context_manager_closes_connection(tmp_path):
+    db_path = tmp_path / "race-history.sqlite3"
+    race_history.start_race(str(db_path), entries=["racer_one"])
+    race_history.get_latest_race(str(db_path))
+
+    with race_history.connect(str(db_path)) as connection:
+        connection.execute("select 1")
+
+    with pytest.raises(sqlite3.ProgrammingError):
+        connection.execute("select 1")
+
+    db_path.unlink()
 
 
 def test_initialize_database_migrates_old_race_entries_fk_to_cascade(tmp_path):
@@ -231,6 +247,25 @@ def test_stats_and_leaderboard_ignore_residual_winner_for_unknown_race(tmp_path)
 
     assert race_history.get_racer_stats(str(db_path), "RacerOne")["wins"] == 0
     assert race_history.get_leaderboard(str(db_path)) == []
+
+
+def test_stats_and_leaderboard_count_duplicate_normalized_entries_once(tmp_path):
+    db_path = tmp_path / "race-history.sqlite3"
+    race_history.start_race(str(db_path), ["RacerOne", "racerone"])
+    race_history.complete_latest_pending_race(str(db_path), "RacerOne")
+
+    assert race_history.get_racer_stats(str(db_path), "racerone") == {
+        "name": "racerone",
+        "wins": 1,
+        "total_races": 1,
+        "win_percentage": 100.0,
+    }
+    assert race_history.get_leaderboard(str(db_path))[0] == {
+        "name": "racerone",
+        "wins": 1,
+        "total_races": 1,
+        "win_percentage": 100.0,
+    }
 
 
 def test_pending_race_blocks_next_start_when_snapshot_differs(tmp_path):
