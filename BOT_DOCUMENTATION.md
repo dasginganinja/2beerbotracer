@@ -39,6 +39,8 @@ If all checks pass, the user is added to the queue and notified.
 |---------|-------------|
 | `!start` | Removes up to `MAX_ENTRIES` (default: 30) entries from the queue and announces the starting lineup |
 | `!clearentries` | Clears all race entries from the queue and file |
+| `!winner <number or name>` | Records the winner for the latest pending race |
+| `!setlastwinner <number, name, skipped, or unknown>` | Corrects the latest race result |
 
 ### Regular User Commands
 
@@ -46,6 +48,9 @@ If all checks pass, the user is added to the queue and notified.
 |---------|-------------|
 | `!commands` | Lists available commands |
 | `!entries` | Shows current race entry list |
+| `!winner` | Shows the latest race winner or latest race winner status |
+| `!leaderboard` | Shows the top 5 winners with compact stats |
+| `!stats [name]` | Shows your stats, or another racer's stats when a name is provided |
 | `!race` / `!play` / `!enter` / `!join` | Submit a race entry |
 
 ---
@@ -67,7 +72,7 @@ The WebSocket uses a simple command-based protocol:
 | Message | Response | Description |
 |---------|----------|-------------|
 | `send_queue` | JSON array | Returns current race entries as a JSON object with `number` and `name` fields |
-| `latest_winner` | JSON object | Returns the last race winner (requires `latest_winner` global variable to be set) |
+| `latest_winner` | JSON object | Returns the latest race winner status and winner stats |
 
 ### HTML Client Connection
 
@@ -175,6 +180,7 @@ Note: The YouTube integration runs independently of Twitch and continues even af
 | `YOUTUBE_API_KEY` | YouTube Data API key |
 | `YOUTUBE_LIVE_VIDEO_ID` | YouTube live stream video ID |
 | `ENTRY_FILE` | Path to the entry file (default: `entries.txt`) |
+| `RACE_HISTORY_DB` | SQLite database path for durable race history (default: `race-history.sqlite3`) |
 
 ---
 
