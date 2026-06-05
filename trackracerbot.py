@@ -382,6 +382,15 @@ def build_entry_lookup_response(search_text: str, entries) -> str:
     return f"{name} is car #{display_car_number(position)}."
 
 
+def build_own_entry_lookup_response(author: str, entries) -> str:
+    result = find_entry_by_name(entries, author)
+    if result is None:
+        return f"{author}, you're not in this race. Maybe the next one gets your moment."
+
+    name, position = result
+    return f"{name} is car #{display_car_number(position)}."
+
+
 def build_entry_response(author: str, position: int) -> str:
     template = ENTRY_RESPONSE_TEMPLATES[(position - 1) % len(ENTRY_RESPONSE_TEMPLATES)]
     return template.format(author=author, position=display_car_number(position))
@@ -679,7 +688,10 @@ async def handle_message(message: str, author: str, twitch_message: TwitchMessag
 
     elif command == COMMAND_ENTRY_LOOKUP:
         search_text = message[len(ENTRY_LOOKUP_COMMAND):].strip()
-        await respond(build_entry_lookup_response(search_text, entry_queue))
+        if search_text:
+            await respond(build_entry_lookup_response(search_text, entry_queue))
+        else:
+            await respond(build_own_entry_lookup_response(author, entry_queue))
 
     if command == COMMAND_ENTRY:
         if not registration_open:

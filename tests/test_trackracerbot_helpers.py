@@ -170,6 +170,18 @@ def test_build_entry_lookup_response_by_number_and_name():
     )
 
 
+def test_build_own_entry_lookup_response_reports_caller_entry():
+    assert trackracerbot.build_own_entry_lookup_response("NiceUser", ["racer"] * 28 + ["NiceUser"]) == (
+        "NiceUser is car #69."
+    )
+
+
+def test_build_own_entry_lookup_response_reports_caller_not_entered():
+    assert trackracerbot.build_own_entry_lookup_response("NiceUser", ["OtherUser"]) == (
+        "NiceUser, you're not in this race. Maybe the next one gets your moment."
+    )
+
+
 def test_build_start_response_rotates_and_lowercases_lineup_names():
     assert trackracerbot.build_start_response(["RacerONE", "RACERTwo"], 0) == (
         "Starting grid locked: racerone, racertwo"
