@@ -63,6 +63,16 @@ def test_deleting_race_cascades_to_race_entries(tmp_path):
     assert entry_count == 0
 
 
+def test_delete_race_api_cascades_to_race_entries(tmp_path):
+    db_path = tmp_path / "race-history.sqlite3"
+    race_id = race_history.start_race(str(db_path), entries=["racer_one"])
+
+    race_history.delete_race(str(db_path), race_id)
+
+    assert race_history.get_latest_race(str(db_path)) is None
+    assert race_history.get_race_entries(str(db_path), race_id) == []
+
+
 def test_initialize_database_migrates_old_race_entries_fk_to_cascade(tmp_path):
     db_path = tmp_path / "race-history.sqlite3"
 
@@ -135,3 +145,83 @@ def test_initialize_database_migrates_old_race_entries_fk_to_cascade(tmp_path):
         ).fetchone()[0]
 
     assert entry_count == 0
+
+
+def test_complete_latest_pending_race_records_winner_and_stats(tmp_path):
+    db_path = tmp_path / "race-history.sqlite3"
+    race_history.start_race(
+        str(db_path),
+        ["RacerOne", "RacerTwo"],
+        started_at_utc="2026-06-04T20:00:00+00:00",
+    )
+
+    result = race_history.complete_latest_pending_race(
+        str(db_path),
+        winner_query="2",
+        ended_at_utc="2026-06-04T20:05:00+00:00",
+    )
+
+    assert result["status"] == race_history.STATUS_COMPLETED
+    assert result["winner_name"] == "RacerTwo"
+    assert result["stats"] == {
+        "name": "RacerTwo",
+        "wins": 1,
+        "total_races": 1,
+        "win_percentage": 100.0,
+    }
+
+
+def test_set_latest_race_winner_can_correct_completed_race(tmp_path):
+    db_path = tmp_path / "race-history.sqlite3"
+    race_history.start_race(str(db_path), ["RacerOne", "RacerTwo"])
+    race_history.complete_latest_pending_race(str(db_path), "RacerOne")
+
+    result = race_history.set_latest_race_result(str(db_path), "RacerTwo")
+
+    assert result["status"] == race_history.STATUS_COMPLETED
+    assert result["winner_name"] == "RacerTwo"
+    assert race_history.get_racer_stats(str(db_path), "RacerOne")["wins"] == 0
+    assert race_history.get_racer_stats(str(db_path), "RacerTwo")["wins"] == 1
+
+
+def test_set_latest_race_result_supports_skipped_and_unknown(tmp_path):
+    db_path = tmp_path / "race-history.sqlite3"
+    race_history.start_race(str(db_path), ["RacerOne"])
+
+    skipped = race_history.set_latest_race_result(str(db_path), "skipped")
+    unknown = race_history.set_latest_race_result(str(db_path), "unknown")
+
+    assert skipped["status"] == race_history.STATUS_SKIPPED
+    assert skipped["winner_name"] is None
+    assert unknown["status"] == race_history.STATUS_UNKNOWN
+    assert unknown["winner_name"] is None
+    assert race_history.get_racer_stats(str(db_path), "RacerOne") == {
+        "name": "RacerOne",
+        "wins": 0,
+        "total_races": 1,
+        "win_percentage": 0.0,
+    }
+
+
+def test_leaderboard_orders_by_wins_then_name(tmp_path):
+    db_path = tmp_path / "race-history.sqlite3"
+    for winner in ["Beta", "Alpha", "Beta"]:
+        race_history.start_race(str(db_path), ["Alpha", "Beta"])
+        race_history.complete_latest_pending_race(str(db_path), winner)
+
+    assert race_history.get_leaderboard(str(db_path), limit=5) == [
+        {"name": "Beta", "wins": 2, "total_races": 3, "win_percentage": 66.7},
+        {"name": "Alpha", "wins": 1, "total_races": 3, "win_percentage": 33.3},
+    ]
+
+
+def test_pending_race_blocks_next_start_when_snapshot_differs(tmp_path):
+    db_path = tmp_path / "race-history.sqlite3"
+    race_history.start_race(str(db_path), ["RacerOne"])
+
+    assert race_history.latest_pending_race_matches_entries(
+        str(db_path), ["RacerTwo"]
+    ) is False
+    assert race_history.latest_pending_race_matches_entries(
+        str(db_path), ["RacerOne"]
+    ) is True
