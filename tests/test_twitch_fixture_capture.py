@@ -1051,3 +1051,94 @@ async def test_submission_stats_do_not_count_duplicates_or_report_twice(monkeypa
     assert stats_outputs == [
         "Entry list filled in 0s. Twitch entries: 3.3% (1/30)."
     ]
+
+
+@pytest.mark.asyncio
+async def test_winner_without_args_reports_pending_latest_race(monkeypatch, tmp_path):
+    outputs = []
+
+    async def fake_print_everywhere(logmessage, twitch_message=None):
+        outputs.append(logmessage)
+
+    monkeypatch.setattr(trackracerbot, "print_everywhere", fake_print_everywhere)
+    monkeypatch.setattr(trackracerbot, "CHAT_CAPTURE_FILE", "")
+    monkeypatch.setattr(trackracerbot, "race_history_db_abs", str(tmp_path / "race-history.sqlite3"))
+    trackracerbot.race_history.start_race(trackracerbot.race_history_db_abs, ["RacerOne"])
+
+    await trackracerbot.handle_message(
+        "!winner",
+        "viewer",
+        twitch_message=FakeTwitchMessage(is_mod=False),
+    )
+
+    assert outputs == ["Last race has no winner recorded yet."]
+
+
+@pytest.mark.asyncio
+async def test_mod_winner_records_latest_pending_race(monkeypatch, tmp_path):
+    outputs = []
+
+    async def fake_print_everywhere(logmessage, twitch_message=None):
+        outputs.append(logmessage)
+
+    monkeypatch.setattr(trackracerbot, "print_everywhere", fake_print_everywhere)
+    monkeypatch.setattr(trackracerbot, "CHAT_CAPTURE_FILE", "")
+    monkeypatch.setattr(trackracerbot, "race_history_db_abs", str(tmp_path / "race-history.sqlite3"))
+    trackracerbot.race_history.start_race(
+        trackracerbot.race_history_db_abs,
+        ["RacerOne", "RacerTwo"],
+    )
+
+    await trackracerbot.handle_message(
+        "!winner 2",
+        "example_mod",
+        twitch_message=FakeTwitchMessage(is_mod=True),
+    )
+
+    assert outputs == ["Winner recorded: RacerTwo. 1W / 1R / 100.0%."]
+
+
+@pytest.mark.asyncio
+async def test_non_mod_winner_with_args_does_not_mutate_history(monkeypatch, tmp_path):
+    outputs = []
+
+    async def fake_print_everywhere(logmessage, twitch_message=None):
+        outputs.append(logmessage)
+
+    monkeypatch.setattr(trackracerbot, "print_everywhere", fake_print_everywhere)
+    monkeypatch.setattr(trackracerbot, "CHAT_CAPTURE_FILE", "")
+    monkeypatch.setattr(trackracerbot, "race_history_db_abs", str(tmp_path / "race-history.sqlite3"))
+    trackracerbot.race_history.start_race(trackracerbot.race_history_db_abs, ["RacerOne"])
+
+    await trackracerbot.handle_message(
+        "!winner RacerOne",
+        "viewer",
+        twitch_message=FakeTwitchMessage(is_mod=False),
+    )
+
+    latest = trackracerbot.race_history.get_latest_race(trackracerbot.race_history_db_abs)
+    assert outputs == []
+    assert latest["status"] == trackracerbot.race_history.STATUS_PENDING
+
+
+@pytest.mark.asyncio
+async def test_set_last_winner_supports_skipped_unknown_and_correction(monkeypatch, tmp_path):
+    outputs = []
+
+    async def fake_print_everywhere(logmessage, twitch_message=None):
+        outputs.append(logmessage)
+
+    monkeypatch.setattr(trackracerbot, "print_everywhere", fake_print_everywhere)
+    monkeypatch.setattr(trackracerbot, "CHAT_CAPTURE_FILE", "")
+    monkeypatch.setattr(trackracerbot, "race_history_db_abs", str(tmp_path / "race-history.sqlite3"))
+    trackracerbot.race_history.start_race(trackracerbot.race_history_db_abs, ["RacerOne", "RacerTwo"])
+
+    await trackracerbot.handle_message("!setlastwinner skipped", "example_mod", twitch_message=FakeTwitchMessage(is_mod=True))
+    await trackracerbot.handle_message("!setlastwinner unknown", "example_mod", twitch_message=FakeTwitchMessage(is_mod=True))
+    await trackracerbot.handle_message("!setlastwinner RacerTwo", "example_mod", twitch_message=FakeTwitchMessage(is_mod=True))
+
+    assert outputs == [
+        "Last race marked skipped.",
+        "Last race winner marked unknown.",
+        "Last winner updated: RacerTwo. 1W / 1R / 100.0%.",
+    ]

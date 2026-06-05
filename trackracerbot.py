@@ -472,6 +472,25 @@ def format_inline_racer_stats(stats: dict) -> str:
     return f"{stats['wins']}W / {stats['total_races']}R / {stats['win_percentage']:.1f}%"
 
 
+def build_latest_winner_response(db_path: str) -> str:
+    latest = race_history.get_latest_race(db_path)
+    if latest is None:
+        return "No races recorded yet."
+    if latest["status"] == race_history.STATUS_PENDING:
+        return "Last race has no winner recorded yet."
+    if latest["status"] == race_history.STATUS_SKIPPED:
+        return "Last race was skipped."
+    if latest["status"] == race_history.STATUS_UNKNOWN:
+        return "Last race winner is unknown."
+    stats = race_history.get_racer_stats(db_path, latest["winner_name"])
+    return f"Last winner: {latest['winner_name']}. {format_inline_racer_stats(stats)}."
+
+
+def build_winner_recorded_response(prefix: str, result: dict) -> str:
+    stats = result["stats"]
+    return f"{prefix}: {result['winner_name']}. {format_inline_racer_stats(stats)}."
+
+
 def build_leaderboard_response(leaderboard: list[dict]) -> str:
     if not leaderboard:
         return "No completed winners yet."
@@ -787,6 +806,42 @@ async def handle_message(message: str, author: str, twitch_message: TwitchMessag
             await respond(build_entry_lookup_response(search_text, entry_queue))
         else:
             await respond(build_own_entry_lookup_response(author, entry_queue))
+
+    elif command == COMMAND_WINNER:
+        winner_query = message[len(WINNER_COMMAND):].strip()
+        if not winner_query:
+            await respond(build_latest_winner_response(race_history_db_abs))
+        elif is_mod:
+            result = race_history.complete_latest_pending_race(
+                race_history_db_abs,
+                winner_query,
+            )
+            if result is None:
+                await respond("No pending race to record a winner for.")
+            elif result.get("error") == "winner_not_found":
+                await respond(f"No entry found for {winner_query}.")
+            else:
+                await respond(build_winner_recorded_response("Winner recorded", result))
+
+    elif command == COMMAND_SET_LAST_WINNER and is_mod:
+        result_query = message[len(SET_LAST_WINNER_COMMAND):].strip()
+        if not result_query:
+            await respond("Usage: !setlastwinner {number, name, skipped, or unknown}")
+        else:
+            result = race_history.set_latest_race_result(
+                race_history_db_abs,
+                result_query,
+            )
+            if result is None:
+                await respond("No races recorded yet.")
+            elif result.get("error") == "winner_not_found":
+                await respond(f"No entry found for {result_query}.")
+            elif result["status"] == race_history.STATUS_SKIPPED:
+                await respond("Last race marked skipped.")
+            elif result["status"] == race_history.STATUS_UNKNOWN:
+                await respond("Last race winner marked unknown.")
+            else:
+                await respond(build_winner_recorded_response("Last winner updated", result))
 
     if command == COMMAND_ENTRY:
         if not registration_open:
