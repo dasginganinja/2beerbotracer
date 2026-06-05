@@ -17,6 +17,7 @@ import pytz
 import websockets
 import json
 import re
+import race_history
 
 # Load the values from the .env file
 load_dotenv()
@@ -48,6 +49,12 @@ bot_state_file = os.getenv("BOT_STATE_FILE")
 if bot_state_file is None:
     bot_state_file = os.path.join(os.path.dirname(entry_file_abs), "bot-state.json")
 bot_state_file_abs = os.path.abspath(bot_state_file)
+race_history_db = os.getenv("RACE_HISTORY_DB")
+if race_history_db is None:
+    race_history_db = os.path.join(
+        os.path.dirname(entry_file_abs), "race-history.sqlite3"
+    )
+race_history_db_abs = os.path.abspath(race_history_db)
 
 # Set maximum number of entries
 MAX_ENTRIES = 30
@@ -93,6 +100,10 @@ COMMAND_CLOSE_ENTRIES = "close_entries"
 COMMAND_CLEAR_ENTRIES = "clear_entries"
 COMMAND_ENTRIES = "entries"
 COMMAND_ENTRY_LOOKUP = "entry_lookup"
+COMMAND_WINNER = "winner"
+COMMAND_SET_LAST_WINNER = "set_last_winner"
+COMMAND_LEADERBOARD = "leaderboard"
+COMMAND_STATS = "stats"
 COMMAND_UNKNOWN = "unknown"
 
 COMMANDS_COMMAND = "!commands"
@@ -102,6 +113,10 @@ CLOSE_ENTRIES_COMMAND = "!closeentries"
 CLEAR_ENTRIES_COMMAND = "!clearentries"
 ENTRIES_COMMAND = "!entries"
 ENTRY_LOOKUP_COMMAND = "!entry"
+WINNER_COMMAND = "!winner"
+SET_LAST_WINNER_COMMAND = "!setlastwinner"
+LEADERBOARD_COMMAND = "!leaderboard"
+STATS_COMMAND = "!stats"
 
 ENTRY_RESPONSE_TEMPLATES = (
     "You're in, {author}. You're car #{position}.",
@@ -306,11 +321,40 @@ def is_entry_lookup_message(message: str) -> bool:
     )
 
 
+def is_exact_or_space_command(message: str, command: str) -> bool:
+    message_lower = message.lower()
+    return message_lower == command or message_lower.startswith(command + " ")
+
+
+def is_winner_message(message: str) -> bool:
+    return is_exact_or_space_command(message, WINNER_COMMAND)
+
+
+def is_set_last_winner_message(message: str) -> bool:
+    return is_exact_or_space_command(message, SET_LAST_WINNER_COMMAND)
+
+
+def is_leaderboard_message(message: str) -> bool:
+    return is_exact_or_space_command(message, LEADERBOARD_COMMAND)
+
+
+def is_stats_message(message: str) -> bool:
+    return is_exact_or_space_command(message, STATS_COMMAND)
+
+
 def classify_message(message: str) -> str:
     if is_commands_message(message):
         return COMMAND_COMMANDS
     if is_entry_lookup_message(message):
         return COMMAND_ENTRY_LOOKUP
+    if is_winner_message(message):
+        return COMMAND_WINNER
+    if is_set_last_winner_message(message):
+        return COMMAND_SET_LAST_WINNER
+    if is_leaderboard_message(message):
+        return COMMAND_LEADERBOARD
+    if is_stats_message(message):
+        return COMMAND_STATS
     if is_entry_message(message):
         return COMMAND_ENTRY
     if is_start_message(message):
@@ -411,6 +455,30 @@ def build_start_response(lineup_names, rotation_index: int) -> str:
 
 def build_registration_closed_response(author: str) -> str:
     return REGISTRATION_CLOSED_RESPONSE.format(author=author)
+
+
+def format_racer_stats(stats: dict) -> str:
+    return (
+        f"{stats['name']}: {stats['wins']}W / "
+        f"{stats['total_races']}R / {stats['win_percentage']:.1f}%."
+    )
+
+
+def format_inline_racer_stats(stats: dict) -> str:
+    return f"{stats['wins']}W / {stats['total_races']}R / {stats['win_percentage']:.1f}%"
+
+
+def build_leaderboard_response(leaderboard: list[dict]) -> str:
+    if not leaderboard:
+        return "No completed winners yet."
+    parts = []
+    for index, stats in enumerate(leaderboard[:5], start=1):
+        parts.append(
+            f"{index}. {stats['name']} "
+            f"{stats['wins']}W/{stats['total_races']}R "
+            f"{stats['win_percentage']:.1f}%"
+        )
+    return "Top winners: " + "; ".join(parts) + "."
 
 
 def build_welcome_message(

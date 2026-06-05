@@ -94,6 +94,54 @@ def test_classify_message_preserves_case_and_prefix_behavior():
     assert trackracerbot.classify_message("hello artmannJudy") == trackracerbot.COMMAND_UNKNOWN
 
 
+def test_new_race_history_commands_use_exact_or_space_matching():
+    assert trackracerbot.is_winner_message("!winner")
+    assert trackracerbot.is_winner_message("!winner 12")
+    assert not trackracerbot.is_winner_message("!winnerboard")
+    assert trackracerbot.is_set_last_winner_message("!setlastwinner racer")
+    assert not trackracerbot.is_set_last_winner_message("!setlastwinnerboard")
+    assert trackracerbot.is_leaderboard_message("!leaderboard")
+    assert not trackracerbot.is_leaderboard_message("!leaderboards")
+    assert trackracerbot.is_stats_message("!stats")
+    assert trackracerbot.is_stats_message("!stats racer")
+    assert not trackracerbot.is_stats_message("!statsboard")
+
+
+def test_classify_message_includes_race_history_commands():
+    assert trackracerbot.classify_message("!winner") == trackracerbot.COMMAND_WINNER
+    assert trackracerbot.classify_message("!winner racer") == trackracerbot.COMMAND_WINNER
+    assert (
+        trackracerbot.classify_message("!setlastwinner racer")
+        == trackracerbot.COMMAND_SET_LAST_WINNER
+    )
+    assert (
+        trackracerbot.classify_message("!leaderboard")
+        == trackracerbot.COMMAND_LEADERBOARD
+    )
+    assert trackracerbot.classify_message("!stats") == trackracerbot.COMMAND_STATS
+
+
+def test_race_stat_response_formatting_is_short():
+    assert trackracerbot.format_racer_stats(
+        {"name": "RacerOne", "wins": 3, "total_races": 12, "win_percentage": 25.0}
+    ) == "RacerOne: 3W / 12R / 25.0%."
+
+
+def test_leaderboard_response_formatting_limits_to_top_five():
+    leaderboard = [
+        {"name": f"racer_{index}", "wins": 6 - index, "total_races": 10, "win_percentage": 50.0}
+        for index in range(1, 7)
+    ]
+
+    assert trackracerbot.build_leaderboard_response(leaderboard) == (
+        "Top winners: 1. racer_1 5W/10R 50.0%; "
+        "2. racer_2 4W/10R 50.0%; "
+        "3. racer_3 3W/10R 50.0%; "
+        "4. racer_4 2W/10R 50.0%; "
+        "5. racer_5 1W/10R 50.0%."
+    )
+
+
 def test_build_entry_response_rotates_and_preserves_author_case():
     assert trackracerbot.build_entry_response("CAPSUser", 1) == (
         "You're in, CAPSUser. You're car #1."
