@@ -20,6 +20,16 @@ class FakeTwitchMessage:
 def clear_entry_queue(tmp_path, monkeypatch):
     monkeypatch.setattr(
         trackracerbot,
+        "entry_file_abs",
+        str(tmp_path / "entries.txt"),
+    )
+    monkeypatch.setattr(
+        trackracerbot,
+        "bot_state_file_abs",
+        str(tmp_path / "bot-state.json"),
+    )
+    monkeypatch.setattr(
+        trackracerbot,
         "race_history_db_abs",
         str(tmp_path / "race-history.sqlite3"),
     )
@@ -38,8 +48,10 @@ def clear_entry_queue(tmp_path, monkeypatch):
     trackracerbot.registration_open = True
 
 
-def test_twitch_fixture_uses_temp_race_history_db_by_default(tmp_path):
+def test_twitch_fixture_uses_temp_race_history_db_and_bot_state_by_default(tmp_path):
     assert str(tmp_path) in trackracerbot.race_history_db_abs
+    assert str(tmp_path) in trackracerbot.bot_state_file_abs
+    assert str(tmp_path) in trackracerbot.entry_file_abs
 
 
 def test_chat_capture_is_disabled_when_file_path_is_empty(monkeypatch):
@@ -469,6 +481,62 @@ async def test_start_creates_pending_race_snapshot(monkeypatch, tmp_path):
     assert outputs == ["Starting grid locked: racerone, racertwo"]
     assert latest["status"] == trackracerbot.race_history.STATUS_PENDING
     assert [entry["name"] for entry in entries] == ["RacerONE", "RACERTwo"]
+
+
+@pytest.mark.asyncio
+async def test_start_persists_one_coherent_closed_registration_state(
+    monkeypatch, tmp_path
+):
+    outputs = []
+    snapshots = []
+    opened_at = "2026-06-04T19:50:00+00:00"
+
+    async def fake_print_everywhere(logmessage, twitch_message=None):
+        outputs.append(logmessage)
+
+    original_write_registration_state = trackracerbot.write_registration_state
+
+    def capturing_write_registration_state():
+        original_write_registration_state()
+        snapshots.append(
+            json.loads(Path(trackracerbot.bot_state_file_abs).read_text(encoding="utf-8"))
+        )
+
+    monkeypatch.setattr(trackracerbot, "print_everywhere", fake_print_everywhere)
+    monkeypatch.setattr(trackracerbot, "CHAT_CAPTURE_FILE", "")
+    monkeypatch.setattr(trackracerbot, "entry_file_abs", str(tmp_path / "entries.txt"))
+    monkeypatch.setattr(
+        trackracerbot, "bot_state_file_abs", str(tmp_path / "bot-state.json")
+    )
+    monkeypatch.setattr(
+        trackracerbot, "race_history_db_abs", str(tmp_path / "race-history.sqlite3")
+    )
+    monkeypatch.setattr(
+        trackracerbot, "write_registration_state", capturing_write_registration_state
+    )
+    trackracerbot.entry_queue.extend(["RacerONE", "RACERTwo"])
+    trackracerbot.registration_open = True
+    trackracerbot.submission_window["entries_opened_at_utc"] = opened_at
+    trackracerbot.submission_window["entries_closed_at_utc"] = None
+
+    await trackracerbot.handle_message(
+        "!start",
+        "example_mod",
+        twitch_message=FakeTwitchMessage(is_mod=True),
+    )
+
+    state = json.loads(Path(trackracerbot.bot_state_file_abs).read_text(encoding="utf-8"))
+    assert outputs == ["Starting grid locked: racerone, racertwo"]
+    assert state["registration_open"] is False
+    assert state["submission_window"]["entries_opened_at_utc"] == opened_at
+    assert state["submission_window"]["entries_closed_at_utc"]
+    assert all(
+        not (
+            snapshot["registration_open"]
+            and snapshot["submission_window"]["entries_closed_at_utc"]
+        )
+        for snapshot in snapshots
+    )
 
 
 @pytest.mark.asyncio

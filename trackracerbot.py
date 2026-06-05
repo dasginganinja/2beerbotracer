@@ -586,10 +586,11 @@ def write_registration_state() -> None:
         print(f"Could not write bot state: {e}")
 
 
-def set_registration_open(is_open: bool) -> None:
+def set_registration_open(is_open: bool, persist: bool = True) -> None:
     global registration_open
     registration_open = is_open and len(entry_queue) < MAX_ENTRIES
-    write_registration_state()
+    if persist:
+        write_registration_state()
 
 
 def load_registration_state() -> None:
@@ -692,15 +693,17 @@ def reset_submission_stats(started_at: float = None, persist: bool = True) -> No
         write_registration_state()
 
 
-def mark_entries_opened(opened_at_utc: str = None) -> None:
+def mark_entries_opened(opened_at_utc: str = None, persist: bool = True) -> None:
     submission_window["entries_opened_at_utc"] = opened_at_utc or race_history.utc_now_iso()
     submission_window["entries_closed_at_utc"] = None
-    write_registration_state()
+    if persist:
+        write_registration_state()
 
 
-def mark_entries_closed(closed_at_utc: str = None) -> None:
+def mark_entries_closed(closed_at_utc: str = None, persist: bool = True) -> None:
     submission_window["entries_closed_at_utc"] = closed_at_utc or race_history.utc_now_iso()
-    write_registration_state()
+    if persist:
+        write_registration_state()
 
 
 def format_elapsed_time(seconds: float) -> str:
@@ -888,7 +891,7 @@ async def handle_message(message: str, author: str, twitch_message: TwitchMessag
                 )
                 return
 
-        mark_entries_closed()
+        mark_entries_closed(persist=False)
         race_history.start_race(
             race_history_db_abs,
             lineup_names,
@@ -899,26 +902,30 @@ async def handle_message(message: str, author: str, twitch_message: TwitchMessag
         if pending_race_to_delete is not None:
             race_history.delete_race(race_history_db_abs, pending_race_to_delete)
         await respond(build_start_response(lineup_names, next(start_response_counter)))
-        set_registration_open(False)
+        set_registration_open(False, persist=False)
+        write_registration_state()
 
     elif command == COMMAND_OPEN_ENTRIES and is_mod:
-        set_registration_open(True)
-        mark_entries_opened()
+        set_registration_open(True, persist=False)
+        mark_entries_opened(persist=False)
         mark_signup_activity(time.monotonic())
+        write_registration_state()
         await respond("Entries are open.")
 
     elif command == COMMAND_CLOSE_ENTRIES and is_mod:
-        set_registration_open(False)
-        mark_entries_closed()
+        set_registration_open(False, persist=False)
+        mark_entries_closed(persist=False)
+        write_registration_state()
         await respond("entries closed")
                 
     elif command == COMMAND_CLEAR_ENTRIES and is_mod:
         # Clear the queue
         clear_queue()
-        set_registration_open(True)
-        reset_submission_stats(time.monotonic())
-        mark_entries_opened()
+        set_registration_open(True, persist=False)
+        reset_submission_stats(time.monotonic(), persist=False)
+        mark_entries_opened(persist=False)
         mark_signup_activity(time.monotonic())
+        write_registration_state()
         await respond("All entries have been cleared.")
 
     elif command == COMMAND_ENTRIES:
