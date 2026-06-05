@@ -483,3 +483,132 @@ def get_leaderboard(db_path: str, limit: int = 5) -> list[dict]:
             }
         )
     return leaderboard
+
+
+def get_car_stats(db_path: str, display_number: int) -> dict | None:
+    initialize_database(db_path)
+    with connect(db_path) as connection:
+        total_races = connection.execute(
+            """
+            select count(distinct race_id)
+            from race_entries
+            where display_number = ?
+            """,
+            (display_number,),
+        ).fetchone()[0]
+
+        if total_races == 0:
+            return None
+
+        wins = connection.execute(
+            """
+            select count(*)
+            from races
+            join race_entries
+                on race_entries.id = races.winner_entry_id
+            where race_entries.display_number = ?
+                and races.status = ?
+            """,
+            (display_number, STATUS_COMPLETED),
+        ).fetchone()[0]
+
+        best_driver = connection.execute(
+            """
+            select
+                race_entries.normalized_name,
+                (
+                    select latest_win_entry.name
+                    from race_entries latest_win_entry
+                    join races latest_win_race
+                        on latest_win_race.winner_entry_id = latest_win_entry.id
+                    where latest_win_entry.normalized_name =
+                        race_entries.normalized_name
+                        and latest_win_entry.display_number = ?
+                        and latest_win_race.status = ?
+                    order by latest_win_race.id desc
+                    limit 1
+                ) as name,
+                count(*) as wins
+            from races
+            join race_entries
+                on race_entries.id = races.winner_entry_id
+            where race_entries.display_number = ?
+                and races.status = ?
+            group by race_entries.normalized_name
+            order by wins desc, race_entries.normalized_name asc
+            limit 1
+            """,
+            (
+                display_number,
+                STATUS_COMPLETED,
+                display_number,
+                STATUS_COMPLETED,
+            ),
+        ).fetchone()
+
+        last_win = connection.execute(
+            """
+            select race_entries.name
+            from races
+            join race_entries
+                on race_entries.id = races.winner_entry_id
+            where race_entries.display_number = ?
+                and races.status = ?
+            order by races.id desc
+            limit 1
+            """,
+            (display_number, STATUS_COMPLETED),
+        ).fetchone()
+
+    return {
+        "display_number": display_number,
+        "wins": wins,
+        "total_races": total_races,
+        "win_percentage": round((wins / total_races) * 100, 1)
+        if total_races
+        else 0.0,
+        "best_driver": best_driver["name"] if best_driver is not None else None,
+        "best_driver_wins": best_driver["wins"] if best_driver is not None else 0,
+        "last_win": last_win["name"] if last_win is not None else None,
+    }
+
+
+def get_car_leaderboard(db_path: str, limit: int = 5) -> list[dict]:
+    initialize_database(db_path)
+    with connect(db_path) as connection:
+        rows = connection.execute(
+            """
+            select
+                race_entries.display_number,
+                count(distinct race_entries.race_id) as total_races,
+                count(races.winner_entry_id) as wins
+            from race_entries
+            left join races
+                on races.winner_entry_id = race_entries.id
+                and races.status = ?
+            group by race_entries.display_number
+            having wins > 0
+            order by
+                wins desc,
+                cast(wins as real) / count(distinct race_entries.race_id) desc,
+                race_entries.display_number asc
+            limit ?
+            """,
+            (STATUS_COMPLETED, limit),
+        ).fetchall()
+
+    leaderboard = []
+    for row in rows:
+        total_races = row["total_races"]
+        wins = row["wins"]
+        leaderboard.append(
+            {
+                "display_number": row["display_number"],
+                "wins": wins,
+                "total_races": total_races,
+                "win_percentage": round((wins / total_races) * 100, 1)
+                if total_races
+                else 0.0,
+            }
+        )
+    return leaderboard

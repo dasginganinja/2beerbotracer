@@ -109,6 +109,8 @@ COMMAND_WINNER = "winner"
 COMMAND_SET_LAST_WINNER = "set_last_winner"
 COMMAND_LEADERBOARD = "leaderboard"
 COMMAND_STATS = "stats"
+COMMAND_CAR_STATS = "car_stats"
+COMMAND_CAR_LEADERBOARD = "car_leaderboard"
 COMMAND_UNKNOWN = "unknown"
 
 COMMANDS_COMMAND = "!commands"
@@ -122,6 +124,8 @@ WINNER_COMMAND = "!winner"
 SET_LAST_WINNER_COMMAND = "!setlastwinner"
 LEADERBOARD_COMMAND = "!leaderboard"
 STATS_COMMAND = "!stats"
+CAR_STATS_COMMAND = "!carstats"
+CAR_LEADERBOARD_COMMAND = "!carleaderboard"
 
 ENTRY_RESPONSE_TEMPLATES = (
     "You're in, {author}. You're car #{position}.",
@@ -347,6 +351,14 @@ def is_stats_message(message: str) -> bool:
     return is_exact_or_space_command(message, STATS_COMMAND)
 
 
+def is_car_stats_message(message: str) -> bool:
+    return is_exact_or_space_command(message, CAR_STATS_COMMAND)
+
+
+def is_car_leaderboard_message(message: str) -> bool:
+    return is_exact_or_space_command(message, CAR_LEADERBOARD_COMMAND)
+
+
 def classify_message(message: str) -> str:
     if is_commands_message(message):
         return COMMAND_COMMANDS
@@ -360,6 +372,10 @@ def classify_message(message: str) -> str:
         return COMMAND_LEADERBOARD
     if is_stats_message(message):
         return COMMAND_STATS
+    if is_car_stats_message(message):
+        return COMMAND_CAR_STATS
+    if is_car_leaderboard_message(message):
+        return COMMAND_CAR_LEADERBOARD
     if is_entry_message(message):
         return COMMAND_ENTRY
     if is_start_message(message):
@@ -517,6 +533,44 @@ def build_leaderboard_response(leaderboard: list[dict]) -> str:
             f"{stats['win_percentage']:.1f}%"
         )
     return "Top winners: " + "; ".join(parts) + "."
+
+
+def parse_car_stats_display_number(query: str) -> int | None:
+    stripped_query = query.strip()
+    if not stripped_query.isdecimal():
+        return None
+    display_number = int(stripped_query)
+    if display_number <= 0:
+        return None
+    return display_number
+
+
+def build_car_stats_response(stats: dict | None, display_number: int) -> str:
+    if stats is None:
+        return f"No races recorded for car #{display_number}."
+
+    response = (
+        f"Car #{stats['display_number']}: {stats['wins']}W / "
+        f"{stats['total_races']}R / {stats['win_percentage']:.1f}%."
+    )
+    if stats["best_driver"] is not None:
+        response += f" Best driver: {stats['best_driver']} {stats['best_driver_wins']}W."
+    if stats["last_win"] is not None:
+        response += f" Last win: {stats['last_win']}."
+    return response
+
+
+def build_car_leaderboard_response(leaderboard: list[dict]) -> str:
+    if not leaderboard:
+        return "No completed car winners yet."
+    parts = []
+    for index, stats in enumerate(leaderboard[:5], start=1):
+        parts.append(
+            f"{index}. #{stats['display_number']} "
+            f"{stats['wins']}W/{stats['total_races']}R "
+            f"{stats['win_percentage']:.1f}%"
+        )
+    return "Top cars: " + "; ".join(parts) + "."
 
 
 def build_welcome_message(
@@ -810,7 +864,10 @@ async def handle_message(message: str, author: str, twitch_message: TwitchMessag
         await print_everywhere(logmessage, twitch_message=twitch_message)
 
     if command == COMMAND_COMMANDS:
-        commands_message = "Available commands: !play !entries !winner !leaderboard !stats"
+        commands_message = (
+            "Available commands: !play !entries !winner !leaderboard !stats "
+            "!carstats !carleaderboard"
+        )
         if is_mod:
             commands_message += (
                 " // Mod Commands: !start !openentries !closeentries !clearentries "
@@ -888,6 +945,26 @@ async def handle_message(message: str, author: str, twitch_message: TwitchMessag
                 await respond(f"No race stats found for {stats['name']}.")
             else:
                 await respond(format_racer_stats(stats))
+
+    elif command == COMMAND_CAR_STATS:
+        car_stats_query = message[len(CAR_STATS_COMMAND):].strip()
+        display_number = parse_car_stats_display_number(car_stats_query)
+        if display_number is None:
+            await respond("Usage: !carstats <number>")
+        else:
+            await respond(
+                build_car_stats_response(
+                    race_history.get_car_stats(race_history_db_abs, display_number),
+                    display_number,
+                )
+            )
+
+    elif command == COMMAND_CAR_LEADERBOARD:
+        await respond(
+            build_car_leaderboard_response(
+                race_history.get_car_leaderboard(race_history_db_abs, limit=5)
+            )
+        )
 
     if command == COMMAND_ENTRY:
         if not registration_open:

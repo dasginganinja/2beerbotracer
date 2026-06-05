@@ -231,6 +231,74 @@ def test_leaderboard_orders_by_wins_then_name(tmp_path):
     ]
 
 
+def test_get_car_stats_reports_display_number_performance(tmp_path):
+    db_path = tmp_path / "race-history.sqlite3"
+    race_history.start_race(str(db_path), ["Alice", "Bob", "Cara"])
+    race_history.complete_latest_pending_race(str(db_path), "Bob")
+    race_history.start_race(str(db_path), ["Dana", "Eli", "Fay"])
+    race_history.complete_latest_pending_race(str(db_path), "Eli")
+    race_history.start_race(str(db_path), ["Gus", "Hal", "Ivy"])
+    race_history.complete_latest_pending_race(str(db_path), "Ivy")
+
+    assert race_history.get_car_stats(str(db_path), 2) == {
+        "display_number": 2,
+        "wins": 2,
+        "total_races": 3,
+        "win_percentage": 66.7,
+        "best_driver": "Bob",
+        "best_driver_wins": 1,
+        "last_win": "Eli",
+    }
+
+
+def test_get_car_stats_reports_appearances_without_wins(tmp_path):
+    db_path = tmp_path / "race-history.sqlite3"
+    race_history.start_race(str(db_path), ["Alice", "Bob"])
+    race_history.complete_latest_pending_race(str(db_path), "Alice")
+
+    assert race_history.get_car_stats(str(db_path), 2) == {
+        "display_number": 2,
+        "wins": 0,
+        "total_races": 1,
+        "win_percentage": 0.0,
+        "best_driver": None,
+        "best_driver_wins": 0,
+        "last_win": None,
+    }
+
+
+def test_get_car_stats_returns_none_for_unrecorded_car(tmp_path):
+    db_path = tmp_path / "race-history.sqlite3"
+    race_history.start_race(str(db_path), ["Alice"])
+
+    assert race_history.get_car_stats(str(db_path), 7) is None
+
+
+def test_get_car_leaderboard_ranks_by_wins_rate_and_number(tmp_path):
+    db_path = tmp_path / "race-history.sqlite3"
+    race_history.start_race(str(db_path), ["A1", "B1", "C1"])
+    race_history.complete_latest_pending_race(str(db_path), "B1")
+    race_history.start_race(str(db_path), ["A2", "B2", "C2"])
+    race_history.complete_latest_pending_race(str(db_path), "B2")
+    race_history.start_race(str(db_path), ["A3", "B3", "C3"])
+    race_history.complete_latest_pending_race(str(db_path), "C3")
+
+    assert race_history.get_car_leaderboard(str(db_path), limit=2) == [
+        {
+            "display_number": 2,
+            "wins": 2,
+            "total_races": 3,
+            "win_percentage": 66.7,
+        },
+        {
+            "display_number": 3,
+            "wins": 1,
+            "total_races": 3,
+            "win_percentage": 33.3,
+        },
+    ]
+
+
 def test_stats_and_leaderboard_ignore_residual_winner_for_unknown_race(tmp_path):
     db_path = tmp_path / "race-history.sqlite3"
     race_history.start_race(str(db_path), ["RacerOne"])

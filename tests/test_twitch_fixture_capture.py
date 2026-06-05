@@ -67,7 +67,7 @@ def test_build_twitch_capture_record_contains_sanitized_fields():
         command=trackracerbot.COMMAND_COMMANDS,
         is_mod=True,
         bot_outputs=[
-            "Available commands: !play !entries !winner !leaderboard !stats // Mod Commands: !start !openentries !closeentries !clearentries !winner <number|name> !setlastwinner"
+            "Available commands: !play !entries !winner !leaderboard !stats !carstats !carleaderboard // Mod Commands: !start !openentries !closeentries !clearentries !winner <number|name> !setlastwinner"
         ],
         twitch_message=FakeTwitchMessage(is_mod=True),
     )
@@ -79,7 +79,7 @@ def test_build_twitch_capture_record_contains_sanitized_fields():
         "classification": "commands",
         "is_mod": True,
         "bot_outputs": [
-            "Available commands: !play !entries !winner !leaderboard !stats // Mod Commands: !start !openentries !closeentries !clearentries !winner <number|name> !setlastwinner"
+            "Available commands: !play !entries !winner !leaderboard !stats !carstats !carleaderboard // Mod Commands: !start !openentries !closeentries !clearentries !winner <number|name> !setlastwinner"
         ],
     }
 
@@ -129,7 +129,9 @@ async def test_handle_message_capture_disabled_does_not_write_file(tmp_path, mon
         twitch_message=FakeTwitchMessage(is_mod=False),
     )
 
-    assert outputs == ["Available commands: !play !entries !winner !leaderboard !stats"]
+    assert outputs == [
+        "Available commands: !play !entries !winner !leaderboard !stats !carstats !carleaderboard"
+    ]
     assert not capture_file.exists()
 
 
@@ -152,7 +154,7 @@ async def test_handle_message_capture_enabled_writes_twitch_record(tmp_path, mon
     )
 
     assert outputs == [
-        "Available commands: !play !entries !winner !leaderboard !stats // Mod Commands: !start !openentries !closeentries !clearentries !winner <number|name> !setlastwinner"
+        "Available commands: !play !entries !winner !leaderboard !stats !carstats !carleaderboard // Mod Commands: !start !openentries !closeentries !clearentries !winner <number|name> !setlastwinner"
     ]
     records = [
         json.loads(line)
@@ -166,7 +168,7 @@ async def test_handle_message_capture_enabled_writes_twitch_record(tmp_path, mon
             "classification": "commands",
             "is_mod": True,
             "bot_outputs": [
-                "Available commands: !play !entries !winner !leaderboard !stats // Mod Commands: !start !openentries !closeentries !clearentries !winner <number|name> !setlastwinner"
+                "Available commands: !play !entries !winner !leaderboard !stats !carstats !carleaderboard // Mod Commands: !start !openentries !closeentries !clearentries !winner <number|name> !setlastwinner"
             ],
         }
     ]
@@ -215,7 +217,7 @@ async def test_replay_twitch_capture_record_verifies_command_output(monkeypatch,
         "classification": "commands",
         "is_mod": True,
         "bot_outputs": [
-            "Available commands: !play !entries !winner !leaderboard !stats // Mod Commands: !start !openentries !closeentries !clearentries !winner <number|name> !setlastwinner"
+            "Available commands: !play !entries !winner !leaderboard !stats !carstats !carleaderboard // Mod Commands: !start !openentries !closeentries !clearentries !winner <number|name> !setlastwinner"
         ],
     }
 
@@ -883,6 +885,8 @@ async def test_replay_twitch_command_fixture_covers_all_commands(monkeypatch, tm
         "winner_read",
         "leaderboard",
         "stats_self",
+        "carstats_usage",
+        "carleaderboard_empty",
         "set_last_winner",
     ]
 
@@ -1185,6 +1189,73 @@ async def test_leaderboard_and_stats_commands_report_race_history(monkeypatch, t
         "RacerTwo: 2W / 3R / 66.7%.",
         "RacerOne: 1W / 3R / 33.3%.",
     ]
+
+
+@pytest.mark.asyncio
+async def test_carstats_and_carleaderboard_commands_report_car_history(monkeypatch, tmp_path):
+    outputs = []
+
+    async def fake_print_everywhere(logmessage, twitch_message=None):
+        outputs.append(logmessage)
+
+    db_path = str(tmp_path / "race-history.sqlite3")
+    monkeypatch.setattr(trackracerbot, "print_everywhere", fake_print_everywhere)
+    monkeypatch.setattr(trackracerbot, "CHAT_CAPTURE_FILE", "")
+    monkeypatch.setattr(trackracerbot, "race_history_db_abs", db_path)
+    trackracerbot.race_history.start_race(db_path, ["Alice", "Bob", "Cara"])
+    trackracerbot.race_history.complete_latest_pending_race(db_path, "Bob")
+    trackracerbot.race_history.start_race(db_path, ["Dana", "Eli", "Fay"])
+    trackracerbot.race_history.complete_latest_pending_race(db_path, "Eli")
+    trackracerbot.race_history.start_race(db_path, ["Gus", "Hal", "Ivy"])
+    trackracerbot.race_history.complete_latest_pending_race(db_path, "Ivy")
+
+    await trackracerbot.handle_message("!carstats 2", "viewer", twitch_message=FakeTwitchMessage(is_mod=False))
+    await trackracerbot.handle_message("!carleaderboard", "viewer", twitch_message=FakeTwitchMessage(is_mod=False))
+
+    assert outputs == [
+        "Car #2: 2W / 3R / 66.7%. Best driver: Bob 1W. Last win: Eli.",
+        "Top cars: 1. #2 2W/3R 66.7%; 2. #3 1W/3R 33.3%.",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_carstats_command_reports_usage_and_missing_car(monkeypatch, tmp_path):
+    outputs = []
+
+    async def fake_print_everywhere(logmessage, twitch_message=None):
+        outputs.append(logmessage)
+
+    db_path = str(tmp_path / "race-history.sqlite3")
+    monkeypatch.setattr(trackracerbot, "print_everywhere", fake_print_everywhere)
+    monkeypatch.setattr(trackracerbot, "CHAT_CAPTURE_FILE", "")
+    monkeypatch.setattr(trackracerbot, "race_history_db_abs", db_path)
+    trackracerbot.race_history.start_race(db_path, ["Alice"])
+
+    await trackracerbot.handle_message("!carstats", "viewer", twitch_message=FakeTwitchMessage(is_mod=False))
+    await trackracerbot.handle_message("!carstats nope", "viewer", twitch_message=FakeTwitchMessage(is_mod=False))
+    await trackracerbot.handle_message("!carstats 7", "viewer", twitch_message=FakeTwitchMessage(is_mod=False))
+
+    assert outputs == [
+        "Usage: !carstats <number>",
+        "Usage: !carstats <number>",
+        "No races recorded for car #7.",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_carleaderboard_command_reports_empty_state(monkeypatch, tmp_path):
+    outputs = []
+
+    async def fake_print_everywhere(logmessage, twitch_message=None):
+        outputs.append(logmessage)
+
+    monkeypatch.setattr(trackracerbot, "print_everywhere", fake_print_everywhere)
+    monkeypatch.setattr(trackracerbot, "CHAT_CAPTURE_FILE", "")
+    monkeypatch.setattr(trackracerbot, "race_history_db_abs", str(tmp_path / "race-history.sqlite3"))
+
+    await trackracerbot.handle_message("!carleaderboard", "viewer", twitch_message=FakeTwitchMessage(is_mod=False))
+
+    assert outputs == ["No completed car winners yet."]
 
 
 def test_latest_winner_json_uses_race_history(tmp_path, monkeypatch):
