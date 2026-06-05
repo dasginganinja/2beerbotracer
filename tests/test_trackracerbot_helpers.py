@@ -23,6 +23,7 @@ def test_is_entry_message_accepts_existing_emote_prefixes():
     assert trackracerbot.is_entry_message("artmannJudy")
     assert trackracerbot.is_entry_message("x100pr3Hndoclap52 extra words")
     assert trackracerbot.is_entry_message("x2beerShrek")
+    assert trackracerbot.is_entry_message("x2beerRace")
     assert trackracerbot.is_entry_message("avoidr3Hotdogman")
     assert trackracerbot.is_entry_message("spacec122GoodVibes")
     assert trackracerbot.is_entry_message("artmannNatmar")

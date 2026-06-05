@@ -19,6 +19,7 @@ The following emotes automatically trigger a race entry (equivalent to typing `!
 | `artmannNatmar` | Race entry emote |
 | `artmannOhyeah` | Race entry emote |
 | `x2beerShrek` | Race entry emote |
+| `x2beerRace` | Race entry emote |
 
 **How Emote Entries Work:**
 
