@@ -1185,7 +1185,7 @@ async def test_leaderboard_and_stats_commands_report_race_history(monkeypatch, t
     await trackracerbot.handle_message("!stats", "RacerOne", twitch_message=FakeTwitchMessage(is_mod=False))
 
     assert outputs == [
-        "Top winners: 1. RacerTwo 2W/3R 66.7%; 2. RacerOne 1W/3R 33.3%.",
+        "Top winners: 1️⃣ RacerTwo 2W/3R 66.7% 2️⃣ RacerOne 1W/3R 33.3%.",
         "RacerTwo: 2W / 3R / 66.7%.",
         "RacerOne: 1W / 3R / 33.3%.",
     ]
@@ -1214,7 +1214,7 @@ async def test_carstats_and_carleaderboard_commands_report_car_history(monkeypat
 
     assert outputs == [
         "Car #2: 2W / 3R / 66.7%. Best driver: Bob 1W. Last win: Eli.",
-        "Top cars: 1. #2 2W/3R 66.7%; 2. #3 1W/3R 33.3%.",
+        "Top cars: 1️⃣ #2 2W/3R 66.7% 2️⃣ #3 1W/3R 33.3%.",
     ]
 
 

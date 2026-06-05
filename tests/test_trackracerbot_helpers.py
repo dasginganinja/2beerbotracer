@@ -135,11 +135,11 @@ def test_leaderboard_response_formatting_limits_to_top_five():
     ]
 
     assert trackracerbot.build_leaderboard_response(leaderboard) == (
-        "Top winners: 1. racer_1 5W/10R 50.0%; "
-        "2. racer_2 4W/10R 50.0%; "
-        "3. racer_3 3W/10R 50.0%; "
-        "4. racer_4 2W/10R 50.0%; "
-        "5. racer_5 1W/10R 50.0%."
+        "Top winners: 1️⃣ racer_1 5W/10R 50.0% "
+        "2️⃣ racer_2 4W/10R 50.0% "
+        "3️⃣ racer_3 3W/10R 50.0% "
+        "4️⃣ racer_4 2W/10R 50.0% "
+        "5️⃣ racer_5 1W/10R 50.0%."
     )
 
 

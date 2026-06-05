@@ -127,6 +127,8 @@ STATS_COMMAND = "!stats"
 CAR_STATS_COMMAND = "!carstats"
 CAR_LEADERBOARD_COMMAND = "!carleaderboard"
 
+LEADERBOARD_RANK_MARKERS = ("1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣")
+
 ENTRY_RESPONSE_TEMPLATES = (
     "You're in, {author}. You're car #{position}.",
     "Locked in, {author}. You're car #{position}.",
@@ -528,11 +530,17 @@ def build_leaderboard_response(leaderboard: list[dict]) -> str:
     parts = []
     for index, stats in enumerate(leaderboard[:5], start=1):
         parts.append(
-            f"{index}. {stats['name']} "
+            f"{leaderboard_rank_marker(index)} {stats['name']} "
             f"{stats['wins']}W/{stats['total_races']}R "
             f"{stats['win_percentage']:.1f}%"
         )
-    return "Top winners: " + "; ".join(parts) + "."
+    return "Top winners: " + " ".join(parts) + "."
+
+
+def leaderboard_rank_marker(index: int) -> str:
+    if 1 <= index <= len(LEADERBOARD_RANK_MARKERS):
+        return LEADERBOARD_RANK_MARKERS[index - 1]
+    return f"{index}."
 
 
 def parse_car_stats_display_number(query: str) -> int | None:
@@ -566,11 +574,11 @@ def build_car_leaderboard_response(leaderboard: list[dict]) -> str:
     parts = []
     for index, stats in enumerate(leaderboard[:5], start=1):
         parts.append(
-            f"{index}. #{stats['display_number']} "
+            f"{leaderboard_rank_marker(index)} #{stats['display_number']} "
             f"{stats['wins']}W/{stats['total_races']}R "
             f"{stats['win_percentage']:.1f}%"
         )
-    return "Top cars: " + "; ".join(parts) + "."
+    return "Top cars: " + " ".join(parts) + "."
 
 
 def build_welcome_message(
