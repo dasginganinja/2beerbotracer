@@ -66,6 +66,7 @@ type SimulateRaceInput = {
   seed: number;
   racers: Racer[];
   durationMs: number;
+  trackAngleDeg?: number;
 };
 
 export type CarStatus =
@@ -104,7 +105,7 @@ type CarRuntime = {
   sideHangEligible: boolean;
 };
 
-const SIM_WIDTH = 1420;
+const SIM_WIDTH = 1210;
 const SIM_HEIGHT = 520;
 const SIM_SLOT_COLUMNS = 15;
 const SIM_SLOT_WIDTH = SIM_WIDTH / SIM_SLOT_COLUMNS;
@@ -118,7 +119,8 @@ const SIM_STEP_SECONDS = SIM_STEP_MS / 1000;
 const BELT_SPEED_PX_PER_SEC = 88;
 const MAX_DRIVE_SPEED_PX_PER_SEC = 104;
 const MAX_RECOVERY_SPEED_PX_PER_SEC = 42;
-const MAX_LATERAL_SPEED_PX_PER_SEC = 36;
+const MAX_LATERAL_SPEED_PX_PER_SEC = 24;
+const TRACK_ANGLE_ASSIST_PX_PER_SEC_PER_DEG = 8;
 const ACTIVE_YAW_LIMIT_RAD = 0.72;
 const SLIDING_YAW_LIMIT_RAD = 0.52;
 
@@ -203,10 +205,11 @@ export function createDemoRace(seed: number): DemoRace {
   };
 }
 
-export function simulateRace({ seed, racers, durationMs }: SimulateRaceInput): SimulatedRace {
+export function simulateRace({ seed, racers, durationMs, trackAngleDeg = 2.5 }: SimulateRaceInput): SimulatedRace {
   const random = createRandom(seed);
   const raceAllowsSideHangs = seed % 4 === 0;
   const sideHangLimit = raceAllowsSideHangs ? 1 + (seed % 12 === 0 ? 1 : 0) : 0;
+  const trackAngleAssistVelocity = clamp(trackAngleDeg, -4, 8) * TRACK_ANGLE_ASSIST_PX_PER_SEC_PER_DEG;
   let sideHangs = 0;
   const cars = racers.map<CarRuntime>((racer, index) => {
     const slotX = racer.column * SIM_SLOT_WIDTH + SIM_SLOT_WIDTH / 2;
@@ -214,7 +217,7 @@ export function simulateRace({ seed, racers, durationMs }: SimulateRaceInput): S
     return {
       racer,
       index,
-      x: slotX + (random() - 0.5) * 10,
+      x: slotX + (random() - 0.5) * 14,
       y: SIM_START_Y[racer.row],
       vx: (random() - 0.5) * 4,
       vy: (random() - 0.5) * 3,
@@ -236,10 +239,12 @@ export function simulateRace({ seed, racers, durationMs }: SimulateRaceInput): S
   const frames: RaceFrame[] = [];
   const timeline: RaceTimelineEvent[] = [];
   let lastRunningCount = cars.length;
+  let raceEndTimeMs = durationMs;
 
   for (let timeMs = 0; timeMs <= durationMs; timeMs += SIM_STEP_MS) {
     const runningCars = cars.filter((car) => !car.eliminated);
     if (runningCars.length <= 1 && timeMs > durationMs * 0.2) {
+      raceEndTimeMs = timeMs;
       break;
     }
 
@@ -253,10 +258,13 @@ export function simulateRace({ seed, racers, durationMs }: SimulateRaceInput): S
       const beltVelocity = -BELT_SPEED_PX_PER_SEC;
       const driveVelocity = MAX_DRIVE_SPEED_PX_PER_SEC * car.wheelSpeed * car.traction * yawEfficiency;
       const holdCorrection = clamp((SIM_START_HOLD_Y - car.y) * 1.45, -MAX_RECOVERY_SPEED_PX_PER_SEC, MAX_RECOVERY_SPEED_PX_PER_SEC);
-      const lateralCenter = car.racer.column * SIM_SLOT_WIDTH + SIM_SLOT_WIDTH / 2;
-      const lateralVelocity = clamp((lateralCenter - car.x) * 0.95 * car.stability, -MAX_LATERAL_SPEED_PX_PER_SEC, MAX_LATERAL_SPEED_PX_PER_SEC);
-      const jitterVelocity = (random() - 0.5) * 3.5;
-      const targetVy = beltVelocity + driveVelocity + holdCorrection;
+      const packDrift =
+        Math.sin(timeMs / 2_300 + car.racer.column * 0.42 + seed * 0.01) * 13 +
+        Math.sin(timeMs / 3_900 + car.racer.row * 0.8) * 8;
+      const lateralCenter = car.racer.column * SIM_SLOT_WIDTH + SIM_SLOT_WIDTH / 2 + packDrift;
+      const lateralVelocity = clamp((lateralCenter - car.x) * 0.22 * car.stability, -MAX_LATERAL_SPEED_PX_PER_SEC, MAX_LATERAL_SPEED_PX_PER_SEC);
+      const jitterVelocity = (random() - 0.5) * 5;
+      const targetVy = beltVelocity + trackAngleAssistVelocity + driveVelocity + holdCorrection;
       const targetVx = lateralVelocity + jitterVelocity + Math.sin(yawError) * driveVelocity * 0.12;
 
       car.vy += (targetVy - car.vy) * 0.2;
@@ -361,7 +369,7 @@ export function simulateRace({ seed, racers, durationMs }: SimulateRaceInput): S
     if (sideHangCandidate) {
       sideHangCandidate.status = "side-hung";
       sideHangCandidate.eliminated = true;
-      sideHangCandidate.eliminatedAtMs = Math.min(sideHangCandidate.eliminatedAtMs ?? durationMs, durationMs * 0.82);
+      sideHangCandidate.eliminatedAtMs = Math.min(sideHangCandidate.eliminatedAtMs ?? raceEndTimeMs, raceEndTimeMs * 0.82);
       sideHangCandidate.x = sideHangCandidate.racer.column <= 1 ? SIM_LEFT_SAFE_X - 18 : SIM_RIGHT_SAFE_X + 18;
       sideHangCandidate.y = Math.min(sideHangCandidate.y, SIM_START_HOLD_Y - 150);
       sideHangCandidate.lastChaosType = "side-hang";
@@ -372,10 +380,10 @@ export function simulateRace({ seed, racers, durationMs }: SimulateRaceInput): S
     if (car !== survivor && !car.eliminated) {
       car.status = "knocked-out";
       car.eliminated = true;
-      car.eliminatedAtMs = durationMs;
+      car.eliminatedAtMs = raceEndTimeMs;
       car.lastChaosType = "knockout";
       car.y = Math.min(car.y, SIM_OFF_FRONT_Y - 8);
-      pushChaos(timeline, car, durationMs, "knockout");
+      pushChaos(timeline, car, raceEndTimeMs, "knockout");
     }
   }
   if (survivor) {
@@ -386,13 +394,13 @@ export function simulateRace({ seed, racers, durationMs }: SimulateRaceInput): S
     survivor.angle = Math.PI / 2 + clamp(normalizeAngle(survivor.angle - Math.PI / 2), -0.28, 0.28);
   }
 
-  frames.push(toFrame(durationMs, cars));
+  frames.push(toFrame(raceEndTimeMs, cars));
 
   const orderedCars = [...cars].sort((a, b) => {
     if (!a.eliminated && b.eliminated) return -1;
     if (a.eliminated && !b.eliminated) return 1;
-    if ((b.eliminatedAtMs ?? durationMs) !== (a.eliminatedAtMs ?? durationMs)) {
-      return (b.eliminatedAtMs ?? durationMs) - (a.eliminatedAtMs ?? durationMs);
+    if ((b.eliminatedAtMs ?? raceEndTimeMs) !== (a.eliminatedAtMs ?? raceEndTimeMs)) {
+      return (b.eliminatedAtMs ?? raceEndTimeMs) - (a.eliminatedAtMs ?? raceEndTimeMs);
     }
     return b.stability + b.traction - (a.stability + a.traction);
   });
@@ -401,7 +409,7 @@ export function simulateRace({ seed, racers, durationMs }: SimulateRaceInput): S
     displayName: car.racer.displayName,
     slot: car.racer.slot,
     place: index + 1,
-    finishTimeMs: Math.round(car.eliminatedAtMs ?? durationMs),
+    finishTimeMs: Math.round(car.eliminatedAtMs ?? raceEndTimeMs),
     status: car.status === "pileup" ? "knocked-out" : finalStatus(car.status),
   }));
 

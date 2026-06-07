@@ -18,6 +18,12 @@ http://127.0.0.1:5173/scene?mode=demo
 http://127.0.0.1:5173/control
 ```
 
+Tuning URL:
+
+```text
+http://127.0.0.1:5173/scene?mode=demo&trackAngleDeg=2.5
+```
+
 OBS Browser Source starting point:
 
 ```text
@@ -35,9 +41,11 @@ FPS: 60
 ## Current POC
 
 - Runs a self-contained demo treadmill loop.
-- Uses deterministic seeded simulation for 30 slots in two close rows of 15.
+- Uses deterministic seeded simulation for 30 starting slots in two close rows of 15.
 - Shows registration, countdown, belt motion, grounded down-facing cars on the bottom yellow line, upward slide-offs, bumps, chain reactions, rare side hangs, callouts, one-survivor results, and reset.
 - Models treadmill speed explicitly: the belt carries cars up-screen, wheel drive pushes down-screen when cars are aligned, and sideways cars lose drive efficiency.
+- Uses larger cars on a narrower belt so the pack reads as side-by-side cars instead of strict lanes.
+- Supports `trackAngleDeg` as a tuning knob for how much the slight treadmill incline helps cars resist early slide-back.
 - Uses code-native PixiJS placeholder art so no assets are required.
 - Includes a `/control` placeholder documenting the future operator surface.
 

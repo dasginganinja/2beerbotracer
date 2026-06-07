@@ -90,6 +90,33 @@ describe("race simulation", () => {
     }
   });
 
+  it("uses track angle to help cars resist early upward belt drift", () => {
+    const flatRace = simulateRace({ seed: 2028, racers, durationMs: 20_000, trackAngleDeg: 0 });
+    const angledRace = simulateRace({ seed: 2028, racers, durationMs: 20_000, trackAngleDeg: 4 });
+    const flatFrame = flatRace.frames.find((frame) => frame.timeMs === 8_000);
+    const angledFrame = angledRace.frames.find((frame) => frame.timeMs === 8_000);
+    const averageY = (frame: NonNullable<typeof flatFrame>) =>
+      frame.cars.reduce((sum, car) => sum + car.y, 0) / frame.cars.length;
+
+    expect(angledFrame).toBeDefined();
+    expect(flatFrame).toBeDefined();
+    expect(averageY(angledFrame!)).toBeGreaterThan(averageY(flatFrame!));
+  });
+
+  it("does not force demo races to finish at the old 45 second mark", () => {
+    const race = simulateRace({
+      seed: 2029,
+      racers: createDemoRace(2029).racers,
+      durationMs: 120_000,
+      trackAngleDeg: 2.5,
+    });
+    const finalFrame = race.frames.at(-1);
+
+    expect(finalFrame?.timeMs).toBeGreaterThan(45_000);
+    expect(finalFrame?.timeMs).toBeLessThanOrEqual(120_000);
+    expect(finalFrame?.cars.filter((car) => car.status === "running")).toHaveLength(1);
+  });
+
   it("keeps side-gap hangs uncommon across seeded demo races", () => {
     const sideHangRaces = Array.from({ length: 20 }, (_, index) =>
       simulateRace({ seed: 3000 + index, racers: createDemoRace(3000 + index).racers, durationMs: 45_000 }),

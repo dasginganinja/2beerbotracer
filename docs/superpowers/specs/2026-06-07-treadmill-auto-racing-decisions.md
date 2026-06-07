@@ -44,6 +44,18 @@ Decision: The car's yaw changes its effective drive. When a car rotates too far 
 
 Reason: A sideways car should not float or crab-walk in place. It should lose useful rolling direction, slide with the belt, and either recover traction or get eliminated.
 
+### Treat slots as starting positions, not lanes
+
+Decision: The POC should use a narrower belt, larger cars, faint slot guides, and weak lateral centering so the field reads as a pack of cars side by side.
+
+Reason: The real treadmill does not have strict lanes. Cars are close enough to bump, shove, and shift together, with the second row tight against the first row's bumpers.
+
+### Add a track angle tuning knob
+
+Decision: Demo mode accepts `trackAngleDeg`, defaulting to a small positive angle. The angle adds down-screen assist against the belt so stable cars do not immediately slide back at race start.
+
+Reason: Hot Wheels rolling resistance is low, and the physical treadmill has a slight uphill angle near the exit. The sim needs a simple knob for that effect before the rest of the friction model is fully tuned.
+
 ### Keep POC assets code-native
 
 Decision: Use Pixi `Graphics` and text for placeholder art.

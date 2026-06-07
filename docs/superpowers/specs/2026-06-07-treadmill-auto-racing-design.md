@@ -8,7 +8,7 @@ The first proof should be fun without backend work: `/scene?mode=demo` runs fake
 
 ## Recommended Visual Direction
 
-Use the real treadmill format: a wide belt with two close rows of 15 numbered cars staged on the yellow line at the bottom/closest-to-camera side of the treadmill. Cars point down toward the bottom of the scene, the belt direction is toward the top of the scene, and the second row sits close behind the first row's bumpers rather than in a clearly separated lane. Belt motion is shown with horizontal stripes scrolling upward. As cars get knocked, slow down, or catch the belt friction, they naturally slide toward the top/off the far end of the belt. That can take out individual cars, small groups, or large swaths when cars catch on each other.
+Use the real treadmill format: a belt with two close rows of 15 numbered cars staged on the yellow line at the bottom/closest-to-camera side of the treadmill. Cars point down toward the bottom of the scene, the belt direction is toward the top of the scene, and the second row sits close behind the first row's bumpers rather than in a clearly separated lane. The starting slots are only staging positions; during the race the cars should read as a tight pack that can drift, bump, and shift together. Belt motion is shown with horizontal stripes scrolling upward. As cars get knocked, slow down, or catch the belt friction, they naturally slide toward the top/off the far end of the belt. That can take out individual cars, small groups, or large swaths when cars catch on each other.
 
 Rejected alternatives:
 
@@ -124,8 +124,10 @@ Race:
 - Cars start on the yellow line at the bottom/closest-to-camera side and jitter around their assigned slots while belt speed holds them roughly in place.
 - Failed cars slide toward the top/off the far end as their wheels slow or catch belt friction.
 - The simulation uses explicit screen-space speeds: belt speed carries cars up-screen, wheel drive pushes cars back down-screen only while the car is pointed nose-down, and a hold correction keeps stable cars near the yellow line.
+- A `trackAngleDeg` tuning knob adds down-screen assist to model the slight physical treadmill incline and low Hot Wheels rolling resistance.
 - Yaw matters: a car that gets too sideways loses drive efficiency and is carried upward unless traction and wheel speed recover.
 - Cars scale down as they move toward the top/far end of the treadmill.
+- Slot guides are faint and lateral centering is weak; the field should move like a dense pack, not 15 strict lanes.
 - Incidents can chain through nearby cars, producing small pileups or large group knockouts.
 - Side-gap hangs are rare probability events, not a normal outcome every race.
 - Demo simulation now uses a deterministic fixed-step model with per-car wheel speed, traction, stability, velocity, angular velocity, and contact impulses.
@@ -211,6 +213,7 @@ Milestone 2: Demo simulation
 Milestone 3: Pixi scene
 
 - Render 1920x1080 treadmill belt with 30 slots in two rows.
+- Use larger cars on a narrower belt so side-by-side spacing reads clearly in OBS.
 - Render cars/nameplates.
 - Render HUD, countdown, leaderboard, callouts, results.
 - Run `/scene?mode=demo`.

@@ -18,14 +18,14 @@ import {
 const WIDTH = 1920;
 const HEIGHT = 1080;
 const CENTER_X = 960;
-const DEMO_RACE_MS = 45_000;
-const BELT_X = 250;
+const DEMO_RACE_SAFETY_MS = 120_000;
+const BELT_WIDTH = 1210;
+const BELT_X = (WIDTH - BELT_WIDTH) / 2;
 const BELT_Y = 300;
-const BELT_WIDTH = 1420;
 const BELT_HEIGHT = 520;
 const SLOT_COLUMNS = 15;
 const SLOT_WIDTH = BELT_WIDTH / SLOT_COLUMNS;
-const CAR_SCALE = 0.72;
+const CAR_SCALE = 0.92;
 const CAR_BASE_ROTATION = Math.PI / 2;
 
 type CarView = {
@@ -58,6 +58,7 @@ export class TreadmillScene {
   private stateElapsedMs = 0;
   private raceElapsedMs = 0;
   private seed = 20260607;
+  private trackAngleDeg = 2.5;
   private lastHudKey = "";
   private lastLeaderboardKey = "";
   private calloutUntilMs = 0;
@@ -79,6 +80,7 @@ export class TreadmillScene {
   public async start(): Promise<void> {
     this.mode = this.readMode();
     this.seed = Number(this.params.get("seed") ?? Date.now() % 1_000_000);
+    this.trackAngleDeg = this.readTrackAngle();
     this.race = createDemoRace(this.seed);
     this.state = "REGISTRATION_OPEN";
 
@@ -136,7 +138,8 @@ export class TreadmillScene {
     this.simulatedRace = simulateRace({
       seed: this.seed,
       racers: this.race.racers,
-      durationMs: DEMO_RACE_MS,
+      durationMs: DEMO_RACE_SAFETY_MS,
+      trackAngleDeg: this.trackAngleDeg,
     });
     this.raceElapsedMs = 0;
     this.resultsLayer.removeChildren();
@@ -172,7 +175,8 @@ export class TreadmillScene {
       this.pulseCar(event.racerId);
     }
 
-    if (this.raceElapsedMs >= DEMO_RACE_MS) {
+    const finalFrameTimeMs = this.simulatedRace.frames.at(-1)?.timeMs ?? DEMO_RACE_SAFETY_MS;
+    if (this.raceElapsedMs >= finalFrameTimeMs) {
       for (const result of this.simulatedRace.results) {
         const view = this.carViews.get(result.racerId);
         if (view) {
@@ -202,7 +206,7 @@ export class TreadmillScene {
       .fill(0x121722);
 
     const deck = new Graphics()
-      .roundRect(185, 245, 1550, 640, 42)
+      .roundRect(BELT_X - 65, 245, BELT_WIDTH + 130, 640, 42)
       .fill(0x151922)
       .stroke({ width: 8, color: 0x353b47 })
       .roundRect(BELT_X, BELT_Y, BELT_WIDTH, BELT_HEIGHT, 26)
@@ -239,7 +243,7 @@ export class TreadmillScene {
     const slots = new Graphics();
     for (let column = 0; column < SLOT_COLUMNS; column += 1) {
       const x = BELT_X + column * SLOT_WIDTH;
-      slots.rect(x, BELT_Y + 105, 1, BELT_HEIGHT - 210).fill({ color: 0xffffff, alpha: 0.055 });
+      slots.rect(x, BELT_Y + 125, 1, BELT_HEIGHT - 250).fill({ color: 0xffffff, alpha: 0.025 });
     }
 
     const beltDirection = new Text({
@@ -470,7 +474,7 @@ export class TreadmillScene {
     if (this.state === "REGISTRATION_OPEN") return "Type !race to join the next treadmill disaster";
     if (this.state === "REGISTRATION_CLOSED") return `${this.race.racers.length} cars staged`;
     if (this.state === "COUNTDOWN") return "Hands off the belt. Physics is booting.";
-    if (this.state === "RACING") return `${progressSeconds}s / ${DEMO_RACE_MS / 1000}s | lose momentum and the belt carries you up`;
+    if (this.state === "RACING") return `${progressSeconds}s | track angle ${this.trackAngleDeg.toFixed(1)}deg | lose momentum and the belt carries you up`;
     if (this.state === "PHOTO_FINISH") return "Race control is counting survivors and side-gap victims";
     if (this.state === "RESULTS") return "Resetting for the next grid soon";
     return "";
@@ -572,5 +576,10 @@ export class TreadmillScene {
       return mode;
     }
     return "demo";
+  }
+
+  private readTrackAngle(): number {
+    const raw = Number(this.params.get("trackAngleDeg") ?? "2.5");
+    return Number.isFinite(raw) ? Math.max(-4, Math.min(8, raw)) : 2.5;
   }
 }
