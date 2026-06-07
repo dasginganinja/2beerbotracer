@@ -36,6 +36,7 @@ export type RaceResult = {
 
 export type RaceFrame = {
   timeMs: number;
+  beltSpeedMph: number;
   cars: Array<{
     racerId: string;
     progress: number;
@@ -123,6 +124,7 @@ const SIM_STEP_SECONDS = SIM_STEP_MS / 1000;
 const MPH_TO_PX_PER_SEC = 36;
 const BELT_START_MPH = 2;
 const BELT_FULL_MPH = 10;
+const BELT_HOLD_MS = 60_000;
 const BELT_RAMP_MS = 60_000;
 const MAX_DRIVE_SPEED_PX_PER_SEC = 152;
 const MAX_RECOVERY_SPEED_PX_PER_SEC = 42;
@@ -467,9 +469,12 @@ function normalizeAngle(value: number): number {
 }
 
 function getBeltSpeedPxPerSec(timeMs: number): number {
-  const ramp = clamp(timeMs / BELT_RAMP_MS, 0, 1);
-  const mph = BELT_START_MPH + (BELT_FULL_MPH - BELT_START_MPH) * ramp;
-  return mph * MPH_TO_PX_PER_SEC;
+  return getBeltSpeedMph(timeMs) * MPH_TO_PX_PER_SEC;
+}
+
+function getBeltSpeedMph(timeMs: number): number {
+  const ramp = clamp((timeMs - BELT_HOLD_MS) / BELT_RAMP_MS, 0, 1);
+  return BELT_START_MPH + (BELT_FULL_MPH - BELT_START_MPH) * ramp;
 }
 
 function getNoseY(car: CarRuntime): number {
@@ -754,6 +759,7 @@ function pushChaos(
 function toFrame(timeMs: number, cars: CarRuntime[]): RaceFrame {
   return {
     timeMs,
+    beltSpeedMph: getBeltSpeedMph(timeMs),
     cars: cars.map((car) => ({
       racerId: car.racer.id,
       progress: clamp(car.y / SIM_HEIGHT, -1, 1),

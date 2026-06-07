@@ -203,6 +203,22 @@ describe("race simulation", () => {
     expect(finalFrame?.cars.filter((car) => car.status === "running")).toHaveLength(1);
   });
 
+  it("holds 2mph for the first minute before ramping belt speed", () => {
+    const race = simulateRace({
+      seed: 2034,
+      racers: createDemoRace(2034).racers,
+      durationMs: 120_000,
+      trackAngleDeg: 6,
+    });
+    const atStart = race.frames.find((frame) => frame.timeMs === 0);
+    const atOneMinute = race.frames.find((frame) => frame.timeMs === 60_000);
+    const atNinetySeconds = race.frames.find((frame) => frame.timeMs === 90_000);
+
+    expect(atStart?.beltSpeedMph).toBe(2);
+    expect(atOneMinute?.beltSpeedMph).toBe(2);
+    expect(atNinetySeconds?.beltSpeedMph).toBeCloseTo(6);
+  });
+
   it("keeps side-gap hangs uncommon across seeded demo races", () => {
     const sideHangRaces = Array.from({ length: 20 }, (_, index) =>
       simulateRace({ seed: 3000 + index, racers: createDemoRace(3000 + index).racers, durationMs: 45_000 }),

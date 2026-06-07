@@ -46,7 +46,7 @@ FPS: 60
 - Models treadmill speed explicitly: the belt carries cars up-screen, wheel drive pushes down-screen when cars are aligned, and sideways cars lose drive efficiency.
 - Uses larger cars on a narrower belt so the pack reads as side-by-side cars instead of strict lanes.
 - Supports `trackAngleDeg` as a tuning knob for how much the slight treadmill incline helps cars resist early slide-back. Default is `6`.
-- Ramps treadmill speed from a 2mph-equivalent start to a 10mph-equivalent speed after 60 seconds.
+- Holds a 2mph-equivalent treadmill speed for 60 seconds, then ramps toward a 10mph-equivalent speed.
 - Uses code-native PixiJS placeholder art so no assets are required.
 - Includes a `/control` placeholder documenting the future operator surface.
 

@@ -126,7 +126,7 @@ Race:
 - Failed cars slide toward the top/off the far end as their wheels slow or catch belt friction.
 - The simulation uses explicit screen-space speeds: belt speed carries cars up-screen, wheel drive pushes cars back down-screen only while the car is pointed nose-down, and a hold correction keeps stable cars near the yellow line.
 - A `trackAngleDeg` tuning knob adds down-screen assist to model the slight physical treadmill incline and low Hot Wheels rolling resistance. The current demo default is 6 degrees.
-- Belt speed ramps from a 2mph-equivalent start to a 10mph-equivalent speed after 60 seconds.
+- Belt speed holds at a 2mph-equivalent value for the first 60 seconds, then ramps toward a 10mph-equivalent value.
 - Yaw matters: a car that gets too sideways loses drive efficiency and is carried upward unless traction and wheel speed recover.
 - Cars scale down as they move toward the top/far end of the treadmill.
 - Slot guides are faint and lateral centering is weak; the field should move like a dense pack, not 15 strict lanes.

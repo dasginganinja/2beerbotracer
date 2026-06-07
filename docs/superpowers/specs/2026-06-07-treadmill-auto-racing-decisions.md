@@ -72,7 +72,7 @@ Reason: Hot Wheels rolling resistance is low, and the physical treadmill has a s
 
 ### Ramp treadmill speed
 
-Decision: Demo belt speed starts at a 2mph-equivalent value and ramps to a 10mph-equivalent value after 60 seconds.
+Decision: Demo belt speed holds at a 2mph-equivalent value for the first 60 seconds, then ramps toward a 10mph-equivalent value.
 
 Reason: The real race begins with cars held near the front line, then becomes more chaotic as the belt speed increases.
 

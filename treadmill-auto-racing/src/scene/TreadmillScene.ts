@@ -29,6 +29,7 @@ const CAR_SCALE = 0.92;
 const ROW_CENTER_SPACING = 54;
 const CAR_NOSE_TO_CENTER = 54 * CAR_SCALE;
 const CAR_BASE_ROTATION = Math.PI / 2;
+const DEFAULT_BELT_SPEED_MPH = 2;
 
 type CarView = {
   racer: Racer;
@@ -276,7 +277,8 @@ export class TreadmillScene {
   }
 
   private updateBeltAnimation(deltaMs: number): void {
-    this.beltScroll = (this.beltScroll - deltaMs * 0.14) % 34;
+    const beltSpeedMph = this.getCurrentBeltSpeedMph();
+    this.beltScroll = (this.beltScroll - deltaMs * (0.08 + beltSpeedMph * 0.018)) % 34;
     this.beltStripeLayer.y = this.beltScroll;
   }
 
@@ -479,7 +481,9 @@ export class TreadmillScene {
     if (this.state === "REGISTRATION_OPEN") return "Type !race to join the next treadmill disaster";
     if (this.state === "REGISTRATION_CLOSED") return `${this.race.racers.length} cars staged`;
     if (this.state === "COUNTDOWN") return "Hands off the belt. Physics is booting.";
-    if (this.state === "RACING") return `${progressSeconds}s | track angle ${this.trackAngleDeg.toFixed(1)}deg | lose momentum and the belt carries you up`;
+    if (this.state === "RACING") {
+      return `${progressSeconds}s | track ${this.getCurrentBeltSpeedMph().toFixed(1)} mph | angle ${this.trackAngleDeg.toFixed(1)}deg | speeding up for more chaos`;
+    }
     if (this.state === "PHOTO_FINISH") return "Race control is counting survivors and side-gap victims";
     if (this.state === "RESULTS") return "Resetting for the next grid soon";
     return "";
@@ -533,7 +537,7 @@ export class TreadmillScene {
 
   private getInterpolatedFrame(timeMs: number): RaceFrame {
     if (!this.simulatedRace) {
-      return { timeMs, cars: [] };
+      return { timeMs, beltSpeedMph: DEFAULT_BELT_SPEED_MPH, cars: [] };
     }
 
     const frames = this.simulatedRace.frames;
@@ -547,9 +551,11 @@ export class TreadmillScene {
 
     const previous = frames[nextIndex - 1];
     const next = frames[nextIndex];
-    const t = (timeMs - previous.timeMs) / (next.timeMs - previous.timeMs);
+    const frameSpanMs = Math.max(1, next.timeMs - previous.timeMs);
+    const t = (timeMs - previous.timeMs) / frameSpanMs;
     return {
       timeMs,
+      beltSpeedMph: previous.beltSpeedMph + (next.beltSpeedMph - previous.beltSpeedMph) * t,
       cars: previous.cars.map((car) => {
         const nextCar = next.cars.find((candidate) => candidate.racerId === car.racerId);
         return {
@@ -564,6 +570,13 @@ export class TreadmillScene {
         };
       }),
     };
+  }
+
+  private getCurrentBeltSpeedMph(): number {
+    if (this.state !== "RACING") {
+      return DEFAULT_BELT_SPEED_MPH;
+    }
+    return this.getInterpolatedFrame(this.raceElapsedMs).beltSpeedMph;
   }
 
   private pulseCar(racerId: string): void {
