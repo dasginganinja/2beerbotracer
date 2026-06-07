@@ -20,11 +20,29 @@ Decision: `/scene?mode=demo` decides race order locally from seed and entrants.
 
 Reason: Demo mode must work without backend dependencies. The simulation will be isolated and tested so it can later be replaced or guided by server-authoritative results.
 
-### Choose treadmill oval visual metaphor
+### Correct visual metaphor to physical treadmill racing
 
-Decision: Cars race on a treadmill-shaped oval with broadcast overlays.
+Decision: Cars stage near the front/bottom, closest-to-camera side of the treadmill in two rows of 15 on a wide belt, not an oval track.
 
-Reason: It keeps the treadmill joke visible while making position changes, finish line, and leaderboard updates easy to read.
+Reason: The real segment assigns users to one of 30 cars. The treadmill speed generally holds cars on the yellow line closest to the camera until they bump, slow down, spin, get knocked out, or wedge near a side gap. The scene should recreate that format instead of implying circuit racing. Cars should point down toward the bottom of the scene, the belt should move toward the top, and failed cars should slide toward the top/off the far end. Side-gap hangs should be uncommon, while pileups and chain reactions should be common enough to sell the chaos.
+
+### Treat result order as survival/status
+
+Decision: The demo simulation ranks cars by survival and stability, with exactly one final `running` survivor and the rest ending as `knocked-out`, `side-hung`, or `self-spun`.
+
+Reason: Treadmill racing continues until only one car remains viable on the belt, not until cars complete laps.
+
+### Move from scripted outcomes to fixed-step friction logic
+
+Decision: The simulation should run a deterministic fixed-step loop with explicit belt speed, wheel drive speed, traction, friction/damping, collision impulses, recovery chance, pileup pressure, and rare side-gap checks.
+
+Reason: The real race behavior comes from cars losing or recovering momentum while the belt carries them toward the front. Scripted preassigned outcomes were too artificial and could not represent cars speeding back up, pileups, or front-row failures taking out cars behind them.
+
+### Make orientation part of the physics, not just the art
+
+Decision: The car's yaw changes its effective drive. When a car rotates too far away from nose-down alignment, its wheels stop countering the belt well and the belt carries it upward/off the far end.
+
+Reason: A sideways car should not float or crab-walk in place. It should lose useful rolling direction, slide with the belt, and either recover traction or get eliminated.
 
 ### Keep POC assets code-native
 
@@ -34,6 +52,6 @@ Reason: This avoids asset loading risk and keeps the first OBS proof lightweight
 
 ### Keep notes uncommitted unless requested
 
-Decision: Write docs and code locally, but do not commit automatically.
+Decision: Checkpoint commits are useful before major concept pivots.
 
-Reason: The user asked for reviewable morning notes, not a git commit. If a commit is requested later, scan tracked files for IPv4 literals first per `AGENTS.md`.
+Reason: The initial oval-style POC was committed as `5b2c5b1` before changing the model to true treadmill racing.

@@ -18,16 +18,24 @@ import {
 const WIDTH = 1920;
 const HEIGHT = 1080;
 const CENTER_X = 960;
-const CENTER_Y = 575;
-const TRACK_RADIUS_X = 660;
-const TRACK_RADIUS_Y = 250;
 const DEMO_RACE_MS = 45_000;
+const BELT_X = 250;
+const BELT_Y = 300;
+const BELT_WIDTH = 1420;
+const BELT_HEIGHT = 520;
+const SLOT_COLUMNS = 15;
+const SLOT_WIDTH = BELT_WIDTH / SLOT_COLUMNS;
+const CAR_SCALE = 0.72;
+const CAR_BASE_ROTATION = Math.PI / 2;
 
 type CarView = {
   racer: Racer;
   root: Container;
+  shadow: Graphics;
   nameplate: Text;
   lastProgress: number;
+  lastOffset: number;
+  lastStatus: string;
 };
 
 export class TreadmillScene {
@@ -36,6 +44,7 @@ export class TreadmillScene {
   private readonly app = new Application();
   private readonly root = new Container({ sortableChildren: true });
   private readonly trackLayer = new Container();
+  private readonly beltStripeLayer = new Container();
   private readonly carLayer = new Container({ sortableChildren: true });
   private readonly fxLayer = new Container();
   private readonly hudLayer = new Container();
@@ -53,6 +62,7 @@ export class TreadmillScene {
   private lastLeaderboardKey = "";
   private calloutUntilMs = 0;
   private calloutText = "";
+  private beltScroll = 0;
   private titleText!: Text;
   private phaseText!: Text;
   private promptText!: Text;
@@ -97,6 +107,7 @@ export class TreadmillScene {
     const deltaMs = Math.min(ticker.deltaMS, 100);
     this.elapsedMs += deltaMs;
     this.stateElapsedMs += deltaMs;
+    this.updateBeltAnimation(deltaMs);
 
     if (this.state === "REGISTRATION_OPEN" && this.stateElapsedMs > 4_000) {
       this.transitionTo("REGISTRATION_CLOSED");
@@ -144,8 +155,10 @@ export class TreadmillScene {
       if (!view) {
         continue;
       }
-      this.placeCar(view, car.progress);
+      this.placeCar(view, car.x, car.y, car.angle, car.status, car.scale);
       view.lastProgress = car.progress;
+      view.lastOffset = car.trackOffset;
+      view.lastStatus = car.status;
     }
 
     const event = this.simulatedRace.timeline.find(
@@ -163,7 +176,8 @@ export class TreadmillScene {
       for (const result of this.simulatedRace.results) {
         const view = this.carViews.get(result.racerId);
         if (view) {
-          this.placeCar(view, 1);
+          this.placeCar(view, undefined, undefined, 0, result.status);
+          view.lastStatus = result.status;
         }
       }
       this.transitionTo("PHOTO_FINISH");
@@ -184,49 +198,80 @@ export class TreadmillScene {
     const background = new Graphics()
       .rect(0, 0, WIDTH, HEIGHT)
       .fill(0x08090d)
-      .rect(0, 720, WIDTH, 360)
+      .rect(0, 805, WIDTH, 275)
       .fill(0x121722);
 
-    const treadmill = new Graphics()
-      .roundRect(210, 250, 1500, 650, 42)
+    const deck = new Graphics()
+      .roundRect(185, 245, 1550, 640, 42)
       .fill(0x151922)
       .stroke({ width: 8, color: 0x353b47 })
-      .roundRect(260, 300, 1400, 550, 32)
-      .fill(0x20252f);
+      .roundRect(BELT_X, BELT_Y, BELT_WIDTH, BELT_HEIGHT, 26)
+      .fill(0x222936)
+      .stroke({ width: 6, color: 0xffcf33 });
 
     const belt = new Graphics()
-      .ellipse(CENTER_X, CENTER_Y, TRACK_RADIUS_X + 95, TRACK_RADIUS_Y + 95)
-      .stroke({ width: 118, color: 0x2b303b })
-      .ellipse(CENTER_X, CENTER_Y, TRACK_RADIUS_X + 15, TRACK_RADIUS_Y + 15)
-      .stroke({ width: 10, color: 0xffcf33 })
-      .ellipse(CENTER_X, CENTER_Y, TRACK_RADIUS_X - 85, TRACK_RADIUS_Y - 85)
-      .stroke({ width: 4, color: 0x596273, alpha: 0.7 });
+      .roundRect(BELT_X + 28, BELT_Y + 38, BELT_WIDTH - 56, BELT_HEIGHT - 76, 18)
+      .fill(0x2d333f)
+      .stroke({ width: 4, color: 0x596273 });
 
-    const finish = new Graphics()
-      .rect(CENTER_X - 18, CENTER_Y - TRACK_RADIUS_Y - 112, 36, 190)
-      .fill(0xf7f7fb)
-      .rect(CENTER_X - 18, CENTER_Y - TRACK_RADIUS_Y - 112, 18, 24)
-      .fill(0x111111)
-      .rect(CENTER_X, CENTER_Y - TRACK_RADIUS_Y - 88, 18, 24)
-      .fill(0x111111)
-      .rect(CENTER_X - 18, CENTER_Y - TRACK_RADIUS_Y - 64, 18, 24)
-      .fill(0x111111)
-      .rect(CENTER_X, CENTER_Y - TRACK_RADIUS_Y - 40, 18, 24)
-      .fill(0x111111);
+    this.beltStripeLayer.removeChildren();
+    for (let i = -2; i < 16; i += 1) {
+      const stripe = new Graphics()
+        .rect(BELT_X + 48, BELT_Y + 55 + i * 34, BELT_WIDTH - 96, 11)
+        .fill({ color: 0x3a414e, alpha: 0.36 });
+      this.beltStripeLayer.addChild(stripe);
+    }
 
-    const label = new Text({
-      text: "TREADMILL AUTO RACING",
+    const rails = new Graphics()
+      .rect(BELT_X + 18, BELT_Y + 30, 22, BELT_HEIGHT - 60)
+      .fill(0x0d0f14)
+      .rect(BELT_X + BELT_WIDTH - 40, BELT_Y + 30, 22, BELT_HEIGHT - 60)
+      .fill(0x0d0f14)
+      .rect(BELT_X + 40, BELT_Y + BELT_HEIGHT - 74, BELT_WIDTH - 80, 6)
+      .fill({ color: 0xffcf33, alpha: 0.55 });
+
+    const sideGaps = new Graphics()
+      .roundRect(BELT_X + 38, BELT_Y + 80, 30, BELT_HEIGHT - 160, 10)
+      .fill(0x050608)
+      .roundRect(BELT_X + BELT_WIDTH - 68, BELT_Y + 80, 30, BELT_HEIGHT - 160, 10)
+      .fill(0x050608);
+
+    const slots = new Graphics();
+    for (let column = 0; column < SLOT_COLUMNS; column += 1) {
+      const x = BELT_X + column * SLOT_WIDTH;
+      slots.rect(x, BELT_Y + 105, 1, BELT_HEIGHT - 210).fill({ color: 0xffffff, alpha: 0.055 });
+    }
+
+    const beltDirection = new Text({
+      text: "BELT DIRECTION UP",
       style: {
         fontFamily: "Arial Black, Impact, sans-serif",
-        fontSize: 40,
+        fontSize: 30,
+        fill: 0xb8bfcc,
+        stroke: { color: 0x000000, width: 5 },
+      },
+    });
+    beltDirection.anchor.set(0.5);
+    beltDirection.position.set(BELT_X + BELT_WIDTH - 200, BELT_Y + BELT_HEIGHT - 68);
+
+    const label = new Text({
+      text: "TREADMILL RACING: 30 CARS / LAST SURVIVOR WINS",
+      style: {
+        fontFamily: "Arial Black, Impact, sans-serif",
+        fontSize: 34,
         fill: 0xffcf33,
         stroke: { color: 0x000000, width: 6 },
       },
     });
     label.anchor.set(0.5);
-    label.position.set(CENTER_X, 930);
+    label.position.set(CENTER_X, 900);
 
-    this.trackLayer.addChild(background, treadmill, belt, finish, label);
+    this.trackLayer.addChild(background, deck, belt, this.beltStripeLayer, rails, sideGaps, slots, beltDirection, label);
+  }
+
+  private updateBeltAnimation(deltaMs: number): void {
+    this.beltScroll = (this.beltScroll - deltaMs * 0.14) % 34;
+    this.beltStripeLayer.y = this.beltScroll;
   }
 
   private createHud(): void {
@@ -274,7 +319,7 @@ export class TreadmillScene {
         lineHeight: 38,
       },
     });
-    this.leaderboardText.position.set(1515, 90);
+    this.leaderboardText.position.set(1500, 75);
 
     this.calloutBanner = new Container();
     const calloutBg = new Graphics()
@@ -307,51 +352,80 @@ export class TreadmillScene {
     this.carLayer.removeChildren();
     this.carViews.clear();
 
-    racers.forEach((racer, index) => {
+    racers.forEach((racer) => {
       const root = new Container({ label: racer.id });
+      const shadow = new Graphics()
+        .ellipse(0, 30, 54, 13)
+        .fill({ color: 0x000000, alpha: 0.38 });
       const car = new Graphics()
-        .roundRect(-34, -18, 68, 36, 10)
+        .roundRect(-42, -20, 84, 40, 10)
         .fill(Number.parseInt(racer.color.slice(1), 16))
         .stroke({ width: 4, color: 0x111111 })
-        .circle(-20, 20, 8)
+        .circle(-24, 22, 8)
         .fill(0x050505)
-        .circle(20, 20, 8)
+        .circle(24, 22, 8)
         .fill(0x050505)
-        .rect(4, -13, 20, 10)
-        .fill({ color: 0xffffff, alpha: 0.7 });
+        .rect(8, -14, 24, 11)
+        .fill({ color: 0xffffff, alpha: 0.7 })
+        .poly([42, 0, 58, -10, 58, 10], true)
+        .fill(Number.parseInt(racer.color.slice(1), 16))
+        .stroke({ width: 3, color: 0x111111 });
 
       const nameplate = new Text({
-        text: racer.displayName,
+        text: `#${racer.slot} ${racer.displayName}`,
         style: {
           fontFamily: "Arial, sans-serif",
-          fontSize: 20,
+          fontSize: 17,
           fill: 0xffffff,
           stroke: { color: 0x000000, width: 4 },
         },
       });
       nameplate.anchor.set(0.5);
-      nameplate.position.set(0, -38);
+      nameplate.position.set(0, -37);
 
-      root.addChild(car, nameplate);
+      root.addChild(shadow, car, nameplate);
+      root.scale.set(CAR_SCALE);
       this.carLayer.addChild(root);
 
-      const view = { racer, root, nameplate, lastProgress: index / racers.length };
+      const view = {
+        racer,
+        root,
+        shadow,
+        nameplate,
+        lastProgress: 0.5,
+        lastOffset: 0,
+        lastStatus: "running",
+      };
       this.carViews.set(racer.id, view);
-      this.placeCar(view, index / racers.length);
+      this.placeCar(view, undefined, undefined, 0, "running");
     });
   }
 
-  private placeCar(view: CarView, progress: number): void {
-    const laneOffset = (Number(view.racer.id.replace(/\D/g, "")) % 5 - 2) * 16;
-    const angle = -Math.PI / 2 + progress * Math.PI * 2;
-    const radiusX = TRACK_RADIUS_X + laneOffset;
-    const radiusY = TRACK_RADIUS_Y + laneOffset * 0.35;
-    const x = CENTER_X + Math.cos(angle) * radiusX;
-    const y = CENTER_Y + Math.sin(angle) * radiusY;
+  private placeCar(
+    view: CarView,
+    normalizedX?: number,
+    normalizedY?: number,
+    angle: number = 0,
+    status: string = "running",
+    renderScale: number = 1,
+  ): void {
+    const slotCenterX = BELT_X + view.racer.column * SLOT_WIDTH + SLOT_WIDTH / 2;
+    const yellowLineY = BELT_Y + BELT_HEIGHT - 74;
+    const fallbackY = view.racer.row === 0 ? yellowLineY - 42 : yellowLineY - 90;
+    const x = normalizedX === undefined ? slotCenterX : BELT_X + normalizedX * BELT_WIDTH;
+    const y = normalizedY === undefined ? fallbackY : BELT_Y + normalizedY * BELT_HEIGHT;
+    const activeAngle = Math.max(-0.72, Math.min(0.72, angle));
+    const statusAngle = status === "knocked-out" || status === "self-spun"
+      ? Math.max(-1.05, Math.min(1.05, angle))
+      : activeAngle;
 
     view.root.position.set(x, y);
-    view.root.rotation = angle + Math.PI / 2;
+    view.root.rotation = CAR_BASE_ROTATION + statusAngle;
+    view.root.alpha = status === "knocked-out" ? 0.55 : 1;
+    view.root.scale.set(CAR_SCALE * renderScale);
     view.root.zIndex = Math.round(y);
+    view.shadow.rotation = -view.root.rotation;
+    view.shadow.alpha = status === "knocked-out" ? 0.22 : 0.38;
     view.nameplate.rotation = -view.root.rotation;
   }
 
@@ -396,18 +470,23 @@ export class TreadmillScene {
     if (this.state === "REGISTRATION_OPEN") return "Type !race to join the next treadmill disaster";
     if (this.state === "REGISTRATION_CLOSED") return `${this.race.racers.length} cars staged`;
     if (this.state === "COUNTDOWN") return "Hands off the belt. Physics is booting.";
-    if (this.state === "RACING") return `${progressSeconds}s / ${DEMO_RACE_MS / 1000}s`;
-    if (this.state === "PHOTO_FINISH") return "Race control is pretending that was measurable";
+    if (this.state === "RACING") return `${progressSeconds}s / ${DEMO_RACE_MS / 1000}s | lose momentum and the belt carries you up`;
+    if (this.state === "PHOTO_FINISH") return "Race control is counting survivors and side-gap victims";
     if (this.state === "RESULTS") return "Resetting for the next grid soon";
     return "";
   }
 
   private buildLeaderboard(): string {
-    const ordered = [...this.carViews.values()].sort((a, b) => b.lastProgress - a.lastProgress);
-    const header = "POSITION TOWER";
-    const rows = ordered.slice(0, 10).map((view, index) => {
+    const ordered = [...this.carViews.values()].sort((a, b) => {
+      if (a.lastStatus === "running" && b.lastStatus !== "running") return -1;
+      if (a.lastStatus !== "running" && b.lastStatus === "running") return 1;
+      return b.lastProgress - a.lastProgress;
+    });
+    const header = "SURVIVAL BOARD";
+    const rows = ordered.slice(0, 12).map((view, index) => {
       const place = String(index + 1).padStart(2, " ");
-      return `${place}. ${view.racer.displayName}`;
+      const status = view.lastStatus === "running" ? "OK" : view.lastStatus.toUpperCase();
+      return `${place}. #${String(view.racer.slot).padStart(2, "0")} ${view.racer.displayName} ${status}`;
     });
     return [header, ...rows].join("\n");
   }
@@ -424,10 +503,13 @@ export class TreadmillScene {
 
     const lines = this.simulatedRace.results
       .slice(0, 10)
-      .map((result) => `${result.place}. ${result.displayName}  ${formatTime(result.finishTimeMs)}`);
+      .map((result) => {
+        const status = result.status === "running" ? "survived" : result.status.replace("-", " ");
+        return `${result.place}. #${result.slot} ${result.displayName}  ${status}`;
+      });
 
     this.resultsText = new Text({
-      text: `OFFICIAL ENOUGH RESULTS\n\n${lines.join("\n")}`,
+      text: `TREADMILL SURVIVORS\n\n${lines.join("\n")}`,
       style: {
         fontFamily: "Arial Black, Impact, sans-serif",
         fontSize: 34,
@@ -464,6 +546,12 @@ export class TreadmillScene {
         return {
           racerId: car.racerId,
           progress: car.progress + ((nextCar?.progress ?? car.progress) - car.progress) * t,
+          trackOffset: car.trackOffset + ((nextCar?.trackOffset ?? car.trackOffset) - car.trackOffset) * t,
+          angle: car.angle + ((nextCar?.angle ?? car.angle) - car.angle) * t,
+          status: nextCar?.status ?? car.status,
+          x: car.x + ((nextCar?.x ?? car.x) - car.x) * t,
+          y: car.y + ((nextCar?.y ?? car.y) - car.y) * t,
+          scale: car.scale + ((nextCar?.scale ?? car.scale) - car.scale) * t,
         };
       }),
     };
@@ -485,8 +573,4 @@ export class TreadmillScene {
     }
     return "demo";
   }
-}
-
-function formatTime(ms: number): string {
-  return `${(ms / 1000).toFixed(2)}s`;
 }

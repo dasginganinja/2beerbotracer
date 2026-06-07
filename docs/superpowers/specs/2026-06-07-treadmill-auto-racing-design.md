@@ -2,18 +2,18 @@
 
 ## Product Brief
 
-Treadmill Auto Racing is a browser-based OBS scene for a livestream race segment. Viewers enter through chat commands handled by `trackracerbot`, then OBS shows a broadcast-style animated race with named cars, position changes, chaos events, a finish, and results.
+Treadmill Auto Racing is a browser-based OBS scene for a livestream race segment. Viewers enter through chat commands handled by `trackracerbot`, then OBS shows a broadcast-style recreation of the treadmill race: 30 small cars staged in two close-packed rows of 15, held roughly in place by treadmill speed while bumps, self-spins, knockouts, and side-gap hangs continue until only one car survives.
 
-The first proof should be fun without backend work: `/scene?mode=demo` runs fake entrants, race flow, simulation, callouts, leaderboard, and reset locally in the browser. Later modes can connect to the existing bot WebSocket and then a richer hosted backend.
+The first proof should be fun without backend work: `/scene?mode=demo` runs fake entrants, race flow, simulation, callouts, survival board, and reset locally in the browser. Later modes can connect to the existing bot WebSocket and then a richer hosted backend.
 
 ## Recommended Visual Direction
 
-Use a treadmill-shaped oval: tiny toy race cars loop around a treadmill belt with exaggerated broadcast overlays. This gives the segment a distinct identity, supports position changes cleanly, and reads well at 1920x1080.
+Use the real treadmill format: a wide belt with two close rows of 15 numbered cars staged on the yellow line at the bottom/closest-to-camera side of the treadmill. Cars point down toward the bottom of the scene, the belt direction is toward the top of the scene, and the second row sits close behind the first row's bumpers rather than in a clearly separated lane. Belt motion is shown with horizontal stripes scrolling upward. As cars get knocked, slow down, or catch the belt friction, they naturally slide toward the top/off the far end of the belt. That can take out individual cars, small groups, or large swaths when cars catch on each other.
 
 Rejected alternatives:
 
-- Straight treadmill lanes: very readable, but finish and position changes feel less dynamic.
-- Full NASCAR fake broadcast: polished, but loses the treadmill joke.
+- Oval/circuit racing: visually familiar, but wrong for the actual segment.
+- Full NASCAR fake broadcast: polished, but loses the treadmill mechanism.
 - Serious simulator: wrong tone for a chat minigame.
 
 ## Recommended Architecture
@@ -48,10 +48,11 @@ Target:
 
 Pixi rendering layers:
 
-- Background: treadmill belt, stage, lane/track markings.
+- Background: treadmill belt, stage, side gaps, subtle slot markings, belt direction.
+- Belt texture: horizontal stripes scroll upward to show treadmill motion toward the top of the screen.
 - Race world: cars, nameplates, skid/smoke/confetti.
-- Broadcast HUD: title, registration prompt, countdown, lap/segment, current leader.
-- Position tower: live ordering.
+- Broadcast HUD: title, registration prompt, countdown, race timer, survivor count.
+- Survival board: live status ordering.
 - Callouts: chaos and announcer banners.
 - Results: podium and finish order.
 - Debug overlay: hidden by default, enabled with `?debug=1`.
@@ -110,7 +111,7 @@ Registration:
 
 - Show `Type !race to join`.
 - Display entrants on a starting grid.
-- Demo mode auto-populates 8-12 racers.
+- Demo mode auto-populates 30 racers across two rows of 15.
 
 Countdown:
 
@@ -120,20 +121,26 @@ Countdown:
 
 Race:
 
-- Cars move around the treadmill oval.
-- Simulation decides progress, speed, boost/slip events, and final order.
-- Position tower updates live.
+- Cars start on the yellow line at the bottom/closest-to-camera side and jitter around their assigned slots while belt speed holds them roughly in place.
+- Failed cars slide toward the top/off the far end as their wheels slow or catch belt friction.
+- The simulation uses explicit screen-space speeds: belt speed carries cars up-screen, wheel drive pushes cars back down-screen only while the car is pointed nose-down, and a hold correction keeps stable cars near the yellow line.
+- Yaw matters: a car that gets too sideways loses drive efficiency and is carried upward unless traction and wheel speed recover.
+- Cars scale down as they move toward the top/far end of the treadmill.
+- Incidents can chain through nearby cars, producing small pileups or large group knockouts.
+- Side-gap hangs are rare probability events, not a normal outcome every race.
+- Demo simulation now uses a deterministic fixed-step model with per-car wheel speed, traction, stability, velocity, angular velocity, and contact impulses.
+- Simulation decides survival, bumps, self-spins, side hangs, knockouts, and final result order until one survivor remains.
+- Survival board updates live.
 - Callout banners appear for chaos events.
 
 Finish:
 
-- Slow down near the line.
-- Emphasize winner and close battles.
-- Freeze or briefly replay the finish.
+- Freeze the belt and emphasize the sole survivor versus knocked-out or hung cars.
+- Show callouts for the decisive incidents.
 
 Results:
 
-- Show podium/top 3 and full finish order.
+- Show the sole survivor and incident statuses.
 - Keep readable for OBS.
 - Reset automatically in demo mode after a delay, with manual reset later.
 
@@ -157,7 +164,34 @@ type SceneEnvelope =
   | { v: 0; type: "scene.error"; code: string; message: string; recoverable: boolean };
 ```
 
-For MVP demo mode, the frontend decides results from seed and entrants. For competitive rewards or persistent standings, the server should eventually send authoritative results and the frontend should animate toward them.
+DTO additions for the treadmill format:
+
+```ts
+type RacerDto = {
+  id: string;
+  displayName: string;
+  slot: number; // 1-30
+  row: 0 | 1;
+  column: number; // 0-14
+  color?: string;
+  avatarUrl?: string;
+  source?: "twitch" | "bot" | "test";
+};
+
+type CarStatus = "running" | "knocked-out" | "side-hung" | "self-spun";
+type ChaosType = "bump" | "knockout" | "side-hang" | "self-spin";
+
+type ResultDto = {
+  racerId: string;
+  place: number;
+  slot: number;
+  displayName: string;
+  status: CarStatus;
+  finishTimeMs?: number;
+};
+```
+
+For MVP demo mode, the frontend decides survival/results from seed and entrants, with exactly one final survivor. For real stream operation, the bot or operator should eventually send authoritative winner/status information when the scene needs to match the physical treadmill result.
 
 ## MVP Implementation Plan
 
@@ -170,13 +204,13 @@ Milestone 1: Project shell and docs
 Milestone 2: Demo simulation
 
 - Define scene states and transitions.
-- Generate fake racers.
-- Deterministically simulate progress and final results from seed.
-- Emit chaos callouts.
+- Generate 30 fake racers with fixed slots.
+- Deterministically simulate treadmill drift, bumps, side hangs, knockouts, self-spins, and one-survivor final results from seed.
+- Emit treadmill-specific chaos callouts.
 
 Milestone 3: Pixi scene
 
-- Render 1920x1080 treadmill oval.
+- Render 1920x1080 treadmill belt with 30 slots in two rows.
 - Render cars/nameplates.
 - Render HUD, countdown, leaderboard, callouts, results.
 - Run `/scene?mode=demo`.
@@ -198,14 +232,14 @@ Milestone 5: Verification
 - OBS browser lifecycle: source shutdown can break persistent races; document recommended settings.
 - Performance: too much dynamic `Text` or redrawn `Graphics` can hurt 60fps; update text only on value changes and keep graphics stable.
 - Bot disconnects: scene should show degraded connection state and keep rendering current race.
-- Fairness: demo/browser authority is fine for entertainment, not rewards.
+- Physical/result matching: demo/browser authority is fine for entertainment, but real mode should be able to accept operator/bot results from the actual treadmill.
 - Asset loading: POC uses vector placeholder art to avoid startup downloads.
 - Scope creep: defer accounts, hosted auth, betting, persistent progression, custom assets, and sound.
 
 ## Open Questions
 
-- Should the real segment winner come from the physical treadmill race, the bot, or the browser animation?
+- Should the real segment winner/statuses come from the physical treadmill race, the bot, an operator control panel, or browser animation?
 - Should the first live version use `!start` as race start, or add separate open/close/countdown commands?
-- How long should one race run on stream: 30, 45, or 60 seconds?
-- Should registration remain tied to the existing 30-entry queue, or should the animated race cap entrants lower for readability?
+- How long should one treadmill run last on stream: 30, 45, or 60 seconds?
+- Should all 30 entrants always render, or should empty slots remain visibly empty when fewer viewers join?
 - Should the visual theme be 2Beer-branded immediately, or stay generic until the mechanic is proven?

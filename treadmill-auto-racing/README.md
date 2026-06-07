@@ -34,9 +34,10 @@ FPS: 60
 
 ## Current POC
 
-- Runs a self-contained demo race loop.
-- Uses deterministic seeded race simulation.
-- Shows registration, countdown, racing, callouts, photo finish, results, and reset.
+- Runs a self-contained demo treadmill loop.
+- Uses deterministic seeded simulation for 30 slots in two close rows of 15.
+- Shows registration, countdown, belt motion, grounded down-facing cars on the bottom yellow line, upward slide-offs, bumps, chain reactions, rare side hangs, callouts, one-survivor results, and reset.
+- Models treadmill speed explicitly: the belt carries cars up-screen, wheel drive pushes down-screen when cars are aligned, and sideways cars lose drive efficiency.
 - Uses code-native PixiJS placeholder art so no assets are required.
 - Includes a `/control` placeholder documenting the future operator surface.
 
@@ -44,7 +45,7 @@ FPS: 60
 
 - `/control` is not wired to the scene or bot yet.
 - `mode=local` and `mode=hosted` are labels only in this POC.
-- The scene winner is browser-simulated in demo mode.
+- The scene winner/status order is browser-simulated in demo mode.
 - Real `trackracerbot` WebSocket integration is deferred to the next phase.
 - Sound, custom branding, transparent compositing QA, and asset polish are deferred.
 

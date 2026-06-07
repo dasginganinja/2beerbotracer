@@ -14,6 +14,9 @@ export type Racer = {
   id: string;
   displayName: string;
   color: string;
+  slot: number;
+  row: 0 | 1;
+  column: number;
 };
 
 export type DemoRace = {
@@ -25,8 +28,10 @@ export type DemoRace = {
 export type RaceResult = {
   racerId: string;
   displayName: string;
+  slot: number;
   place: number;
   finishTimeMs: number;
+  status: CarStatus;
 };
 
 export type RaceFrame = {
@@ -34,11 +39,18 @@ export type RaceFrame = {
   cars: Array<{
     racerId: string;
     progress: number;
+    trackOffset: number;
+    angle: number;
+    status: CarStatus;
+    x: number;
+    y: number;
+    scale: number;
   }>;
 };
 
 export type RaceTimelineEvent = {
   type: "chaos";
+  chaosType: ChaosType;
   timeMs: number;
   racerId: string;
   message: string;
@@ -56,6 +68,60 @@ type SimulateRaceInput = {
   durationMs: number;
 };
 
+export type CarStatus =
+  | "running"
+  | "wobbling"
+  | "sliding-up"
+  | "recovering"
+  | "spinning"
+  | "pileup"
+  | "knocked-out"
+  | "side-hung"
+  | "self-spun";
+
+export type ChaosType = "bump" | "knockout" | "side-hang" | "self-spin" | "chain-reaction";
+
+type CarRuntime = {
+  racer: Racer;
+  index: number;
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  angle: number;
+  angularVelocity: number;
+  wheelSpeed: number;
+  traction: number;
+  stability: number;
+  mass: number;
+  status: CarStatus;
+  eliminated: boolean;
+  eliminatedAtMs?: number;
+  finishScore: number;
+  lastChaosType: ChaosType;
+  lastChaosAtMs: number;
+  pileupContacts: number;
+  sideHangEligible: boolean;
+};
+
+const SIM_WIDTH = 1420;
+const SIM_HEIGHT = 520;
+const SIM_SLOT_COLUMNS = 15;
+const SIM_SLOT_WIDTH = SIM_WIDTH / SIM_SLOT_COLUMNS;
+const SIM_START_HOLD_Y = 446;
+const SIM_START_Y = [SIM_START_HOLD_Y, SIM_START_HOLD_Y - 48] as const;
+const SIM_LEFT_SAFE_X = 62;
+const SIM_RIGHT_SAFE_X = SIM_WIDTH - 62;
+const SIM_OFF_FRONT_Y = -36;
+const SIM_STEP_MS = 100;
+const SIM_STEP_SECONDS = SIM_STEP_MS / 1000;
+const BELT_SPEED_PX_PER_SEC = 88;
+const MAX_DRIVE_SPEED_PX_PER_SEC = 104;
+const MAX_RECOVERY_SPEED_PX_PER_SEC = 42;
+const MAX_LATERAL_SPEED_PX_PER_SEC = 36;
+const ACTIVE_YAW_LIMIT_RAD = 0.72;
+const SLIDING_YAW_LIMIT_RAD = 0.52;
+
 const DEMO_NAMES = [
   "Natmar",
   "Hotdogman",
@@ -69,6 +135,24 @@ const DEMO_NAMES = [
   "Boosty",
   "ConeDodger",
   "LapSnack",
+  "WallTap",
+  "BeltBandit",
+  "SideGap",
+  "NoseWedge",
+  "LooseAxle",
+  "FloorIt",
+  "RumbleStrip",
+  "Clipper",
+  "SpinCycle",
+  "DraftTax",
+  "OilPan",
+  "Twitchy",
+  "LeftHook",
+  "RightHook",
+  "ChaosMod",
+  "LastSlot",
+  "Bumper",
+  "Wiggle",
 ];
 
 const DEMO_COLORS = [
@@ -100,13 +184,17 @@ const ALLOWED_TRANSITIONS: Record<RaceState, RaceState[]> = {
 };
 
 export function createDemoRace(seed: number): DemoRace {
-  const random = createRandom(seed);
-  const racerCount = 8 + Math.floor(random() * 5);
-  const racers = DEMO_NAMES.slice(0, racerCount).map((name, index) => ({
-    id: `demo-racer-${index + 1}`,
-    displayName: name,
-    color: DEMO_COLORS[index % DEMO_COLORS.length],
-  }));
+  const racers = DEMO_NAMES.slice(0, 30).map((name, index) => {
+    const slot = index + 1;
+    return {
+      id: `demo-racer-${index + 1}`,
+      displayName: name,
+      color: DEMO_COLORS[index % DEMO_COLORS.length],
+      slot,
+      row: (slot <= 15 ? 0 : 1) as 0 | 1,
+      column: (slot - 1) % 15,
+    };
+  });
 
   return {
     raceId: `demo-${seed}`,
@@ -117,69 +205,204 @@ export function createDemoRace(seed: number): DemoRace {
 
 export function simulateRace({ seed, racers, durationMs }: SimulateRaceInput): SimulatedRace {
   const random = createRandom(seed);
-  const profiles = racers.map((racer, index) => {
-    const baseSpeed = 0.86 + random() * 0.22;
-    const wobble = 0.025 + random() * 0.05;
-    const phase = random() * Math.PI * 2;
-    const boostAtMs = durationMs * (0.18 + random() * 0.62);
-    const boostSize = 0.035 + random() * 0.065;
-    const slipAtMs = durationMs * (0.25 + random() * 0.52);
-    const slipSize = 0.015 + random() * 0.055;
-
+  const raceAllowsSideHangs = seed % 4 === 0;
+  const sideHangLimit = raceAllowsSideHangs ? 1 + (seed % 12 === 0 ? 1 : 0) : 0;
+  let sideHangs = 0;
+  const cars = racers.map<CarRuntime>((racer, index) => {
+    const slotX = racer.column * SIM_SLOT_WIDTH + SIM_SLOT_WIDTH / 2;
+    const rowStagger = racer.row === 0 ? -6 : 6;
     return {
       racer,
       index,
-      baseSpeed,
-      wobble,
-      phase,
-      boostAtMs,
-      boostSize,
-      slipAtMs,
-      slipSize,
-      finishScore: baseSpeed + boostSize - slipSize + random() * 0.08,
+      x: slotX + (random() - 0.5) * 10,
+      y: SIM_START_Y[racer.row],
+      vx: (random() - 0.5) * 4,
+      vy: (random() - 0.5) * 3,
+      angle: Math.PI / 2 + (random() - 0.5) * 0.08,
+      angularVelocity: 0,
+      wheelSpeed: 0.75 + random() * 0.45 + rowStagger / 500,
+      traction: 0.58 + random() * 0.38,
+      stability: 0.52 + random() * 0.42,
+      mass: 0.85 + random() * 0.35,
+      status: "running",
+      eliminated: false,
+      finishScore: 0,
+      lastChaosType: "bump",
+      lastChaosAtMs: -10_000,
+      pileupContacts: 0,
+      sideHangEligible: raceAllowsSideHangs && (racer.column <= 1 || racer.column >= 13 || random() > 0.88),
     };
   });
-
-  const orderedProfiles = [...profiles].sort((a, b) => {
-    if (b.finishScore !== a.finishScore) {
-      return b.finishScore - a.finishScore;
-    }
-    return a.index - b.index;
-  });
-
-  const results = orderedProfiles.map((profile, index) => ({
-    racerId: profile.racer.id,
-    displayName: profile.racer.displayName,
-    place: index + 1,
-    finishTimeMs: Math.round(durationMs + index * 420 + random() * 180),
-  }));
-
   const frames: RaceFrame[] = [];
-  for (let timeMs = 0; timeMs <= durationMs; timeMs += 250) {
-    const raceT = timeMs / durationMs;
-    frames.push({
-      timeMs,
-      cars: profiles.map((profile) => {
-        const finishRank = results.find((result) => result.racerId === profile.racer.id)?.place ?? racers.length;
-        const rankBonus = (racers.length - finishRank) / Math.max(racers.length, 1) * 0.1;
-        const boost = smoothStep(profile.boostAtMs, profile.boostAtMs + 4000, timeMs) * profile.boostSize;
-        const slip = smoothStep(profile.slipAtMs, profile.slipAtMs + 3000, timeMs) * profile.slipSize;
-        const wobble = Math.sin(raceT * Math.PI * 8 + profile.phase) * profile.wobble;
-        const progress = clamp(raceT * (0.9 + rankBonus) + boost - slip + wobble * (1 - raceT), 0, 1);
+  const timeline: RaceTimelineEvent[] = [];
+  let lastRunningCount = cars.length;
 
-        return {
-          racerId: profile.racer.id,
-          progress: timeMs >= durationMs ? 1 : progress,
-        };
-      }),
-    });
+  for (let timeMs = 0; timeMs <= durationMs; timeMs += SIM_STEP_MS) {
+    const runningCars = cars.filter((car) => !car.eliminated);
+    if (runningCars.length <= 1 && timeMs > durationMs * 0.2) {
+      break;
+    }
+
+    for (const car of cars) {
+      if (car.eliminated || car.status === "side-hung") {
+        continue;
+      }
+
+      const yawError = normalizeAngle(car.angle - Math.PI / 2);
+      const yawEfficiency = clamp(Math.cos(Math.abs(yawError) * 1.8), 0, 1);
+      const beltVelocity = -BELT_SPEED_PX_PER_SEC;
+      const driveVelocity = MAX_DRIVE_SPEED_PX_PER_SEC * car.wheelSpeed * car.traction * yawEfficiency;
+      const holdCorrection = clamp((SIM_START_HOLD_Y - car.y) * 1.45, -MAX_RECOVERY_SPEED_PX_PER_SEC, MAX_RECOVERY_SPEED_PX_PER_SEC);
+      const lateralCenter = car.racer.column * SIM_SLOT_WIDTH + SIM_SLOT_WIDTH / 2;
+      const lateralVelocity = clamp((lateralCenter - car.x) * 0.95 * car.stability, -MAX_LATERAL_SPEED_PX_PER_SEC, MAX_LATERAL_SPEED_PX_PER_SEC);
+      const jitterVelocity = (random() - 0.5) * 3.5;
+      const targetVy = beltVelocity + driveVelocity + holdCorrection;
+      const targetVx = lateralVelocity + jitterVelocity + Math.sin(yawError) * driveVelocity * 0.12;
+
+      car.vy += (targetVy - car.vy) * 0.2;
+      car.vx += (targetVx - car.vx) * 0.18;
+      car.angularVelocity += -yawError * car.stability * 0.45 * SIM_STEP_SECONDS;
+      car.angularVelocity *= 0.84;
+      car.x += car.vx * SIM_STEP_SECONDS;
+      car.y += car.vy * SIM_STEP_SECONDS;
+      car.angle += car.angularVelocity * SIM_STEP_SECONDS;
+
+      const maxYaw = car.status === "spinning" || car.status === "self-spun" ? 1.05 : ACTIVE_YAW_LIMIT_RAD;
+      car.angle = Math.PI / 2 + clamp(normalizeAngle(car.angle - Math.PI / 2), -maxYaw, maxYaw);
+
+      const tractionShock = random() > car.stability + 0.43 ? 0.09 : 0;
+      if (tractionShock > 0) {
+        car.traction = clamp(car.traction - tractionShock, 0.08, 1);
+        car.status = "wobbling";
+        car.angularVelocity += (random() - 0.5) * 0.28;
+      } else if (car.status === "wobbling" && random() < car.stability * 0.12) {
+        car.status = "recovering";
+        car.traction = clamp(car.traction + 0.14, 0, 1);
+      } else if ((car.status === "recovering" || car.status === "wobbling") && car.traction > 0.45) {
+        car.status = "running";
+      }
+
+      if (Math.abs(yawError) > SLIDING_YAW_LIMIT_RAD) {
+        car.traction = clamp(car.traction - 0.055, 0.04, 1);
+        car.wheelSpeed = clamp(car.wheelSpeed - 0.035, 0.08, 1.35);
+        car.status = car.status === "running" ? "sliding-up" : car.status;
+      }
+
+      if (car.vy < -52 && car.status === "running") {
+        car.status = "sliding-up";
+      }
+      if (car.status === "sliding-up" && random() < car.stability * Math.max(car.traction, 0.2) * 0.08) {
+        car.status = "recovering";
+        car.wheelSpeed = clamp(car.wheelSpeed + 0.16, 0, 1.35);
+        car.traction = clamp(car.traction + 0.22, 0, 1);
+      }
+    }
+
+    for (let i = 0; i < cars.length; i += 1) {
+      for (let j = i + 1; j < cars.length; j += 1) {
+        resolveContact(cars[i], cars[j], timeMs, random, timeline);
+      }
+    }
+
+    for (const car of cars) {
+      if (car.eliminated) {
+        continue;
+      }
+
+      car.x = clamp(car.x, 28, SIM_WIDTH - 28);
+      const nearSide = car.x < SIM_LEFT_SAFE_X || car.x > SIM_RIGHT_SAFE_X;
+      if (
+        nearSide &&
+        car.sideHangEligible &&
+        sideHangs < sideHangLimit &&
+        car.y < SIM_START_HOLD_Y - 120 &&
+        car.vy < -44 &&
+        random() < 0.22
+      ) {
+        car.status = "side-hung";
+        car.eliminated = true;
+        car.eliminatedAtMs = timeMs;
+        car.lastChaosType = "side-hang";
+        sideHangs += 1;
+        pushChaos(timeline, car, timeMs, "side-hang");
+      }
+
+      if (car.y < SIM_OFF_FRONT_Y && timeMs > 3_500) {
+        const stillRunning = cars.filter((candidate) => !candidate.eliminated).length;
+        if (stillRunning > 1) {
+          car.status = car.pileupContacts >= 2 ? "pileup" : car.angularVelocity > 0.007 ? "self-spun" : "knocked-out";
+          car.eliminated = true;
+          car.eliminatedAtMs = timeMs;
+          car.lastChaosType = car.pileupContacts >= 2 ? "chain-reaction" : statusToChaosType(car.status);
+          pushChaos(timeline, car, timeMs, car.lastChaosType);
+        }
+      }
+    }
+
+    const runningCount = cars.filter((car) => !car.eliminated).length;
+    if (runningCount < lastRunningCount - 1) {
+      const clusterCar = cars.find((car) => car.lastChaosAtMs === timeMs);
+      if (clusterCar) {
+        pushChaos(timeline, clusterCar, timeMs, "chain-reaction");
+      }
+    }
+    lastRunningCount = runningCount;
+
+    frames.push(toFrame(timeMs, cars));
   }
 
-  const timeline = orderedProfiles.slice(0, Math.min(3, orderedProfiles.length)).map((profile, index) => ({
-    type: "chaos" as const,
-    timeMs: Math.round(durationMs * (0.25 + index * 0.18)),
-    racerId: profile.racer.id,
-    message: buildChaosMessage(profile.racer.displayName, index),
+  const survivor = cars
+    .filter((car) => !car.eliminated)
+    .sort((a, b) => b.stability + b.traction - (a.stability + a.traction))[0];
+  if (sideHangLimit > 0 && sideHangs === 0) {
+    const sideHangCandidate = cars
+      .filter((car) => car !== survivor && (car.racer.column <= 1 || car.racer.column >= 13))
+      .sort((a, b) => (a.eliminatedAtMs ?? durationMs) - (b.eliminatedAtMs ?? durationMs))[0];
+    if (sideHangCandidate) {
+      sideHangCandidate.status = "side-hung";
+      sideHangCandidate.eliminated = true;
+      sideHangCandidate.eliminatedAtMs = Math.min(sideHangCandidate.eliminatedAtMs ?? durationMs, durationMs * 0.82);
+      sideHangCandidate.x = sideHangCandidate.racer.column <= 1 ? SIM_LEFT_SAFE_X - 18 : SIM_RIGHT_SAFE_X + 18;
+      sideHangCandidate.y = Math.min(sideHangCandidate.y, SIM_START_HOLD_Y - 150);
+      sideHangCandidate.lastChaosType = "side-hang";
+      pushChaos(timeline, sideHangCandidate, sideHangCandidate.eliminatedAtMs, "side-hang");
+    }
+  }
+  for (const car of cars) {
+    if (car !== survivor && !car.eliminated) {
+      car.status = "knocked-out";
+      car.eliminated = true;
+      car.eliminatedAtMs = durationMs;
+      car.lastChaosType = "knockout";
+      car.y = Math.min(car.y, SIM_OFF_FRONT_Y - 8);
+      pushChaos(timeline, car, durationMs, "knockout");
+    }
+  }
+  if (survivor) {
+    survivor.status = "running";
+    survivor.eliminated = false;
+    survivor.y = Math.max(survivor.y, SIM_START_HOLD_Y - 18);
+    survivor.vy = Math.max(survivor.vy, 0);
+    survivor.angle = Math.PI / 2 + clamp(normalizeAngle(survivor.angle - Math.PI / 2), -0.28, 0.28);
+  }
+
+  frames.push(toFrame(durationMs, cars));
+
+  const orderedCars = [...cars].sort((a, b) => {
+    if (!a.eliminated && b.eliminated) return -1;
+    if (a.eliminated && !b.eliminated) return 1;
+    if ((b.eliminatedAtMs ?? durationMs) !== (a.eliminatedAtMs ?? durationMs)) {
+      return (b.eliminatedAtMs ?? durationMs) - (a.eliminatedAtMs ?? durationMs);
+    }
+    return b.stability + b.traction - (a.stability + a.traction);
+  });
+  const results = orderedCars.map((car, index) => ({
+    racerId: car.racer.id,
+    displayName: car.racer.displayName,
+    slot: car.racer.slot,
+    place: index + 1,
+    finishTimeMs: Math.round(car.eliminatedAtMs ?? durationMs),
+    status: car.status === "pileup" ? "knocked-out" : finalStatus(car.status),
   }));
 
   return { results, frames, timeline };
@@ -200,20 +423,127 @@ function createRandom(seed: number): () => number {
   };
 }
 
-function smoothStep(edge0: number, edge1: number, value: number): number {
-  const x = clamp((value - edge0) / (edge1 - edge0), 0, 1);
-  return x * x * (3 - 2 * x);
-}
-
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
 
-function buildChaosMessage(displayName: string, index: number): string {
-  const templates = [
-    `${displayName} found the mystery boost lane`,
-    `${displayName} survived a belt wobble`,
-    `${displayName} got aero help from absolutely nowhere`,
-  ];
-  return templates[index % templates.length];
+function normalizeAngle(value: number): number {
+  let angle = value;
+  while (angle > Math.PI) angle -= Math.PI * 2;
+  while (angle < -Math.PI) angle += Math.PI * 2;
+  return angle;
+}
+
+function statusToChaosType(status: CarStatus): ChaosType {
+  if (status === "knocked-out" || status === "pileup") return "knockout";
+  if (status === "side-hung") return "side-hang";
+  if (status === "self-spun" || status === "spinning") return "self-spin";
+  return "bump";
+}
+
+function finalStatus(status: CarStatus): CarStatus {
+  if (status === "wobbling" || status === "recovering" || status === "sliding-up") return "knocked-out";
+  if (status === "spinning") return "self-spun";
+  if (status === "pileup") return "knocked-out";
+  return status;
+}
+
+function resolveContact(
+  a: CarRuntime,
+  b: CarRuntime,
+  timeMs: number,
+  random: () => number,
+  timeline: RaceTimelineEvent[],
+): void {
+  if (a.eliminated || b.eliminated || a.status === "side-hung" || b.status === "side-hung") {
+    return;
+  }
+
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const minX = 58;
+  const minY = 62;
+  if (Math.abs(dx) > minX || Math.abs(dy) > minY) {
+    return;
+  }
+
+  const overlapX = minX - Math.abs(dx);
+  const overlapY = minY - Math.abs(dy);
+  const impulse = (overlapX + overlapY) / (minX + minY);
+  const directionX = dx === 0 ? (random() > 0.5 ? 1 : -1) : Math.sign(dx);
+  const directionY = dy === 0 ? (random() > 0.5 ? 1 : -1) : Math.sign(dy);
+
+  a.vx -= directionX * impulse * 12 / a.mass;
+  b.vx += directionX * impulse * 12 / b.mass;
+  a.vy -= directionY * impulse * 9 / a.mass;
+  b.vy += directionY * impulse * 9 / b.mass;
+  a.angularVelocity -= directionX * impulse * 0.34;
+  b.angularVelocity += directionX * impulse * 0.34;
+
+  a.traction = clamp(a.traction - impulse * (0.025 + random() * 0.045), 0.05, 1);
+  b.traction = clamp(b.traction - impulse * (0.025 + random() * 0.045), 0.05, 1);
+  a.wheelSpeed = clamp(a.wheelSpeed - impulse * 0.035, 0.1, 1.35);
+  b.wheelSpeed = clamp(b.wheelSpeed - impulse * 0.035, 0.1, 1.35);
+
+  a.pileupContacts += 1;
+  b.pileupContacts += 1;
+  a.status = a.pileupContacts > 4 && impulse > 0.62 ? "pileup" : "wobbling";
+  b.status = b.pileupContacts > 4 && impulse > 0.62 ? "pileup" : "wobbling";
+
+  const front = a.racer.row === 0 && b.racer.row === 1 ? a : b.racer.row === 0 && a.racer.row === 1 ? b : undefined;
+  const rear = front === a ? b : front === b ? a : undefined;
+  if (front && rear && Math.abs(front.racer.column - rear.racer.column) <= 1 && impulse > 0.55 && random() < 0.18 + impulse * 0.22) {
+    rear.traction = clamp(rear.traction - 0.14, 0.04, 1);
+    rear.wheelSpeed = clamp(rear.wheelSpeed - 0.1, 0.08, 1.35);
+    rear.status = "sliding-up";
+    rear.vy -= 18 + impulse * 14;
+    pushChaos(timeline, rear, timeMs, "chain-reaction");
+  } else if (impulse > 0.42 && timeMs - a.lastChaosAtMs > 2200 && timeMs - b.lastChaosAtMs > 2200) {
+    pushChaos(timeline, impulse > 0.72 ? a : b, timeMs, impulse > 0.72 ? "chain-reaction" : "bump");
+  }
+}
+
+function pushChaos(
+  timeline: RaceTimelineEvent[],
+  car: CarRuntime,
+  timeMs: number,
+  chaosType: ChaosType,
+): void {
+  if (timeMs - car.lastChaosAtMs < 900 && car.lastChaosType === chaosType) {
+    return;
+  }
+
+  car.lastChaosAtMs = timeMs;
+  car.lastChaosType = chaosType;
+  timeline.push({
+    type: "chaos",
+    chaosType,
+    timeMs: Math.round(timeMs),
+    racerId: car.racer.id,
+    message: buildChaosMessage(car.racer.displayName, chaosType),
+  });
+}
+
+function toFrame(timeMs: number, cars: CarRuntime[]): RaceFrame {
+  return {
+    timeMs,
+    cars: cars.map((car) => ({
+      racerId: car.racer.id,
+      progress: clamp(car.y / SIM_HEIGHT, -1, 1),
+      trackOffset: clamp((car.x - (car.racer.column * SIM_SLOT_WIDTH + SIM_SLOT_WIDTH / 2)) / 84, -1, 1),
+      angle: car.angle - Math.PI / 2,
+      status: car.eliminated ? finalStatus(car.status) : car.status,
+      x: car.x / SIM_WIDTH,
+      y: car.y / SIM_HEIGHT,
+      scale: clamp(0.82 + car.y / SIM_HEIGHT * 0.22, 0.82, 1.08),
+    })),
+  };
+}
+
+function buildChaosMessage(displayName: string, chaosType: ChaosType): string {
+  if (chaosType === "chain-reaction") return `${displayName} got swept into a pileup`;
+  if (chaosType === "knockout") return `${displayName} got taken out on the belt`;
+  if (chaosType === "side-hang") return `${displayName} wedged a nose in the side gap`;
+  if (chaosType === "self-spin") return `${displayName} spun without needing help`;
+  return `${displayName} traded paint and somehow stayed pointed forward`;
 }

@@ -8,10 +8,10 @@ import {
 } from "./raceSimulation";
 
 const racers: Racer[] = [
-  { id: "r1", displayName: "Alpha", color: "#f94144" },
-  { id: "r2", displayName: "Bravo", color: "#f3722c" },
-  { id: "r3", displayName: "Charlie", color: "#f9c74f" },
-  { id: "r4", displayName: "Delta", color: "#90be6d" },
+  { id: "r1", displayName: "Alpha", color: "#f94144", slot: 1, row: 0, column: 0 },
+  { id: "r2", displayName: "Bravo", color: "#f3722c", slot: 2, row: 0, column: 1 },
+  { id: "r3", displayName: "Charlie", color: "#f9c74f", slot: 16, row: 1, column: 0 },
+  { id: "r4", displayName: "Delta", color: "#90be6d", slot: 17, row: 1, column: 1 },
 ];
 
 describe("race simulation", () => {
@@ -20,9 +20,12 @@ describe("race simulation", () => {
 
     expect(race.raceId).toBe("demo-1234");
     expect(race.state).toBe("REGISTRATION_OPEN");
-    expect(race.racers.length).toBeGreaterThanOrEqual(8);
-    expect(race.racers.length).toBeLessThanOrEqual(12);
+    expect(race.racers).toHaveLength(30);
     expect(new Set(race.racers.map((racer) => racer.id)).size).toBe(race.racers.length);
+    expect(race.racers[0]).toMatchObject({ slot: 1, row: 0, column: 0 });
+    expect(race.racers[14]).toMatchObject({ slot: 15, row: 0, column: 14 });
+    expect(race.racers[15]).toMatchObject({ slot: 16, row: 1, column: 0 });
+    expect(race.racers[29]).toMatchObject({ slot: 30, row: 1, column: 14 });
   });
 
   it("produces deterministic final results for a seed and racer list", () => {
@@ -35,15 +38,65 @@ describe("race simulation", () => {
     expect(first.timeline.some((event) => event.type === "chaos")).toBe(true);
   });
 
-  it("keeps sampled progress between 0 and 1 until the race has finished", () => {
+  it("keeps sampled treadmill positions bounded near the belt", () => {
     const race = simulateRace({ seed: 7, racers, durationMs: 30_000 });
 
     for (const frame of race.frames) {
       for (const car of frame.cars) {
-        expect(car.progress).toBeGreaterThanOrEqual(0);
+        expect(car.progress).toBeGreaterThanOrEqual(-1);
         expect(car.progress).toBeLessThanOrEqual(1);
+        expect(car.trackOffset).toBeGreaterThanOrEqual(-1);
+        expect(car.trackOffset).toBeLessThanOrEqual(1);
       }
     }
+  });
+
+  it("models treadmill-specific chaos events and car statuses", () => {
+    const race = simulateRace({ seed: 99, racers, durationMs: 45_000 });
+    const eventTypes = new Set(race.timeline.map((event) => event.chaosType));
+
+    expect(eventTypes.has("bump")).toBe(true);
+    expect(eventTypes.has("knockout") || eventTypes.has("chain-reaction")).toBe(true);
+    expect(race.results.some((result) => result.status !== "running")).toBe(true);
+  });
+
+  it("runs as an elimination race until exactly one car survives", () => {
+    const race = simulateRace({ seed: 2026, racers, durationMs: 45_000 });
+    const survivors = race.results.filter((result) => result.status === "running");
+    const finalFrame = race.frames.at(-1);
+
+    expect(survivors).toHaveLength(1);
+    expect(survivors[0].place).toBe(1);
+    expect(finalFrame?.cars.filter((car) => car.status === "running")).toHaveLength(1);
+    expect(race.timeline.filter((event) => event.chaosType !== "bump").length).toBeGreaterThanOrEqual(
+      racers.length - 1,
+    );
+  });
+
+  it("holds the survivor near the bottom start line while eliminated cars move upward", () => {
+    const race = simulateRace({ seed: 2027, racers, durationMs: 45_000 });
+    const finalFrame = race.frames.at(-1);
+    const survivor = race.results.find((result) => result.status === "running");
+    const survivorCar = finalFrame?.cars.find((car) => car.racerId === survivor?.racerId);
+    const eliminatedCars = finalFrame?.cars.filter((car) => car.status !== "running") ?? [];
+
+    expect(survivorCar?.progress).toBeGreaterThan(0.78);
+    expect(Math.abs(survivorCar?.angle ?? 0)).toBeLessThan(0.35);
+    expect(eliminatedCars.length).toBeGreaterThan(0);
+    for (const car of eliminatedCars) {
+      expect(car.progress).toBeLessThan(survivorCar?.progress ?? 0);
+      expect(car.y).toBeLessThan(survivorCar?.y ?? 1);
+      expect(car.scale).toBeLessThanOrEqual(survivorCar?.scale ?? 0);
+    }
+  });
+
+  it("keeps side-gap hangs uncommon across seeded demo races", () => {
+    const sideHangRaces = Array.from({ length: 20 }, (_, index) =>
+      simulateRace({ seed: 3000 + index, racers: createDemoRace(3000 + index).racers, durationMs: 45_000 }),
+    ).filter((race) => race.results.some((result) => result.status === "side-hung"));
+
+    expect(sideHangRaces.length).toBeGreaterThanOrEqual(2);
+    expect(sideHangRaces.length).toBeLessThanOrEqual(8);
   });
 
   it("allows only explicit race state transitions", () => {
