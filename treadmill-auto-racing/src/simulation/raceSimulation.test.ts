@@ -103,6 +103,23 @@ describe("race simulation", () => {
     expect(averageY(angledFrame!)).toBeGreaterThan(averageY(flatFrame!));
   });
 
+  it("does not turn resting bumper proximity into immediate pileups", () => {
+    const race = simulateRace({
+      seed: 2030,
+      racers: createDemoRace(2030).racers,
+      durationMs: 20_000,
+      trackAngleDeg: 2.5,
+    });
+    const earlyMajorIncidents = race.timeline.filter(
+      (event) => event.timeMs < 6_000 && event.chaosType !== "bump",
+    );
+    const frameAtFiveSeconds = race.frames.find((frame) => frame.timeMs === 5_000);
+
+    expect(earlyMajorIncidents.length).toBeLessThanOrEqual(2);
+    expect(frameAtFiveSeconds?.cars.filter((car) => car.status === "running" || car.status === "recovering").length)
+      .toBeGreaterThanOrEqual(24);
+  });
+
   it("does not force demo races to finish at the old 45 second mark", () => {
     const race = simulateRace({
       seed: 2029,

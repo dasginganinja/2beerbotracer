@@ -56,6 +56,12 @@ Decision: Demo mode accepts `trackAngleDeg`, defaulting to a small positive angl
 
 Reason: Hot Wheels rolling resistance is low, and the physical treadmill has a slight uphill angle near the exit. The sim needs a simple knob for that effect before the rest of the friction model is fully tuned.
 
+### Separate parked bumper contact from real hits
+
+Decision: Front/rear cars that are close and aligned should share/damp velocity instead of generating repeated damaging collision impulses. Chain-reaction callouts are delayed until a car has actually drifted back far enough for the contact to behave like a real incident.
+
+Reason: The two rows are intentionally close together at the line. Treating that resting proximity as a collision every frame caused immediate pileups before any visible shift happened.
+
 ### Keep POC assets code-native
 
 Decision: Use Pixi `Graphics` and text for placeholder art.
