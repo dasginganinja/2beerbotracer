@@ -33,7 +33,7 @@ type CarView = {
   racer: Racer;
   root: Container;
   shadow: Graphics;
-  nameplate: Text;
+  roofNumber: Text;
   lastProgress: number;
   lastOffset: number;
   lastStatus: string;
@@ -378,19 +378,20 @@ export class TreadmillScene {
         .fill(Number.parseInt(racer.color.slice(1), 16))
         .stroke({ width: 3, color: 0x111111 });
 
-      const nameplate = new Text({
-        text: `#${racer.slot} ${racer.displayName}`,
+      const roofNumber = new Text({
+        text: String(racer.slot),
         style: {
-          fontFamily: "Arial, sans-serif",
-          fontSize: 15,
+          fontFamily: "Arial Black, Impact, sans-serif",
+          fontSize: 23,
           fill: 0xffffff,
-          stroke: { color: 0x000000, width: 4 },
+          stroke: { color: 0x000000, width: 5 },
         },
       });
-      nameplate.anchor.set(0.5);
-      nameplate.position.set(0, -46);
+      roofNumber.anchor.set(0.5);
+      roofNumber.position.set(-3, 1);
+      roofNumber.rotation = -Math.PI / 2;
 
-      root.addChild(shadow, car, nameplate);
+      root.addChild(shadow, car, roofNumber);
       root.scale.set(CAR_SCALE);
       this.carLayer.addChild(root);
 
@@ -398,7 +399,7 @@ export class TreadmillScene {
         racer,
         root,
         shadow,
-        nameplate,
+        roofNumber,
         lastProgress: 0.5,
         lastOffset: 0,
         lastStatus: "running",
@@ -433,7 +434,6 @@ export class TreadmillScene {
     view.root.zIndex = Math.round(y);
     view.shadow.rotation = -view.root.rotation;
     view.shadow.alpha = status === "knocked-out" ? 0.22 : 0.38;
-    view.nameplate.rotation = -view.root.rotation;
   }
 
   private updateHud(force: boolean): void {
