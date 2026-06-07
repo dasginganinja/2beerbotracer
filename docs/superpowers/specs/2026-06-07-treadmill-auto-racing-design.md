@@ -125,7 +125,8 @@ Race:
 - The yellow line is the front boundary. Active car noses should stay behind it; the simulated car center is held above the line by the nose-to-center distance.
 - Failed cars slide toward the top/off the far end as their wheels slow or catch belt friction.
 - The simulation uses explicit screen-space speeds: belt speed carries cars up-screen, wheel drive pushes cars back down-screen only while the car is pointed nose-down, and a hold correction keeps stable cars near the yellow line.
-- A `trackAngleDeg` tuning knob adds down-screen assist to model the slight physical treadmill incline and low Hot Wheels rolling resistance.
+- A `trackAngleDeg` tuning knob adds down-screen assist to model the slight physical treadmill incline and low Hot Wheels rolling resistance. The current demo default is 6 degrees.
+- Belt speed ramps from a 2mph-equivalent start to a 10mph-equivalent speed after 60 seconds.
 - Yaw matters: a car that gets too sideways loses drive efficiency and is carried upward unless traction and wheel speed recover.
 - Cars scale down as they move toward the top/far end of the treadmill.
 - Slot guides are faint and lateral centering is weak; the field should move like a dense pack, not 15 strict lanes.
@@ -135,6 +136,7 @@ Race:
 - Side-gap hangs are rare probability events, not a normal outcome every race.
 - Demo simulation now uses a deterministic fixed-step model with per-car wheel speed, traction, stability, velocity, angular velocity, and contact impulses.
 - Resting front/rear bumper proximity is not a damaging collision; close aligned cars damp together until a real shift, yaw, or slide creates a hard hit.
+- Row two begins in light nose-to-tail compression with row one. The rear car nose compresses against the front car tail; the front car nose compresses against the yellow-line/front barrier.
 - Contacts must also correct position, not only velocity. Packed cars can compress, but active cars should not visually stack inside each other or escape the active belt boundaries.
 - Chain reactions should emerge after drift develops, not immediately from the starting grid compression.
 - Simulation decides survival, bumps, self-spins, side hangs, knockouts, and final result order until one survivor remains.

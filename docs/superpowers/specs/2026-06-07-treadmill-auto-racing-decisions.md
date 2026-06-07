@@ -66,9 +66,15 @@ Reason: The prior sim used the yellow line as the car center target, which let t
 
 ### Add a track angle tuning knob
 
-Decision: Demo mode accepts `trackAngleDeg`, defaulting to a small positive angle. The angle adds down-screen assist against the belt so stable cars do not immediately slide back at race start.
+Decision: Demo mode accepts `trackAngleDeg`, defaulting to 6 degrees. The angle adds down-screen assist against the belt so stable cars do not immediately slide back at race start.
 
 Reason: Hot Wheels rolling resistance is low, and the physical treadmill has a slight uphill angle near the exit. The sim needs a simple knob for that effect before the rest of the friction model is fully tuned.
+
+### Ramp treadmill speed
+
+Decision: Demo belt speed starts at a 2mph-equivalent value and ramps to a 10mph-equivalent value after 60 seconds.
+
+Reason: The real race begins with cars held near the front line, then becomes more chaotic as the belt speed increases.
 
 ### Separate parked bumper contact from real hits
 

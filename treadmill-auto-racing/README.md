@@ -21,7 +21,7 @@ http://127.0.0.1:5173/control
 Tuning URL:
 
 ```text
-http://127.0.0.1:5173/scene?mode=demo&trackAngleDeg=2.5
+http://127.0.0.1:5173/scene?mode=demo&trackAngleDeg=6
 ```
 
 OBS Browser Source starting point:
@@ -45,7 +45,8 @@ FPS: 60
 - Shows registration, countdown, belt motion, grounded down-facing cars on the bottom yellow line, upward slide-offs, bumps, chain reactions, rare side hangs, callouts, one-survivor results, and reset.
 - Models treadmill speed explicitly: the belt carries cars up-screen, wheel drive pushes down-screen when cars are aligned, and sideways cars lose drive efficiency.
 - Uses larger cars on a narrower belt so the pack reads as side-by-side cars instead of strict lanes.
-- Supports `trackAngleDeg` as a tuning knob for how much the slight treadmill incline helps cars resist early slide-back.
+- Supports `trackAngleDeg` as a tuning knob for how much the slight treadmill incline helps cars resist early slide-back. Default is `6`.
+- Ramps treadmill speed from a 2mph-equivalent start to a 10mph-equivalent speed after 60 seconds.
 - Uses code-native PixiJS placeholder art so no assets are required.
 - Includes a `/control` placeholder documenting the future operator surface.
 

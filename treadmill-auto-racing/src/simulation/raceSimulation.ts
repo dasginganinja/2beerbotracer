@@ -112,7 +112,7 @@ const SIM_SLOT_WIDTH = SIM_WIDTH / SIM_SLOT_COLUMNS;
 const SIM_FRONT_LINE_Y = 446;
 const SIM_CAR_NOSE_TO_CENTER = 54;
 const SIM_START_HOLD_Y = SIM_FRONT_LINE_Y - SIM_CAR_NOSE_TO_CENTER;
-const SIM_ROW_SPACING = 70;
+const SIM_ROW_SPACING = 54;
 const SIM_START_Y = [SIM_START_HOLD_Y, SIM_START_HOLD_Y - SIM_ROW_SPACING] as const;
 const SIM_LEFT_SAFE_X = 62;
 const SIM_RIGHT_SAFE_X = SIM_WIDTH - 62;
@@ -120,8 +120,11 @@ const SIM_SIDE_RAIL_PADDING = 24;
 const SIM_OFF_FRONT_Y = -36;
 const SIM_STEP_MS = 100;
 const SIM_STEP_SECONDS = SIM_STEP_MS / 1000;
-const BELT_SPEED_PX_PER_SEC = 132;
-const MAX_DRIVE_SPEED_PX_PER_SEC = 148;
+const MPH_TO_PX_PER_SEC = 36;
+const BELT_START_MPH = 2;
+const BELT_FULL_MPH = 10;
+const BELT_RAMP_MS = 60_000;
+const MAX_DRIVE_SPEED_PX_PER_SEC = 152;
 const MAX_RECOVERY_SPEED_PX_PER_SEC = 42;
 const MAX_LATERAL_SPEED_PX_PER_SEC = 24;
 const TRACK_ANGLE_ASSIST_PX_PER_SEC_PER_DEG = 8;
@@ -209,7 +212,7 @@ export function createDemoRace(seed: number): DemoRace {
   };
 }
 
-export function simulateRace({ seed, racers, durationMs, trackAngleDeg = 2.5 }: SimulateRaceInput): SimulatedRace {
+export function simulateRace({ seed, racers, durationMs, trackAngleDeg = 6 }: SimulateRaceInput): SimulatedRace {
   const random = createRandom(seed);
   const raceAllowsSideHangs = seed % 4 === 0;
   const sideHangLimit = raceAllowsSideHangs ? 1 + (seed % 12 === 0 ? 1 : 0) : 0;
@@ -259,7 +262,7 @@ export function simulateRace({ seed, racers, durationMs, trackAngleDeg = 2.5 }: 
 
       const yawError = normalizeAngle(car.angle - Math.PI / 2);
       const yawEfficiency = clamp(Math.cos(Math.abs(yawError) * 1.8), 0, 1);
-      const beltVelocity = -BELT_SPEED_PX_PER_SEC;
+      const beltVelocity = -getBeltSpeedPxPerSec(timeMs);
       const driveVelocity = MAX_DRIVE_SPEED_PX_PER_SEC * car.wheelSpeed * car.traction * yawEfficiency;
       const holdCorrection = clamp((SIM_START_HOLD_Y - car.y) * 1.45, -MAX_RECOVERY_SPEED_PX_PER_SEC, MAX_RECOVERY_SPEED_PX_PER_SEC);
       const seamPhase = timeMs / 2_700 + seed * 0.01;
@@ -284,10 +287,7 @@ export function simulateRace({ seed, racers, durationMs, trackAngleDeg = 2.5 }: 
       car.y += car.vy * SIM_STEP_SECONDS;
       car.angle += car.angularVelocity * SIM_STEP_SECONDS;
 
-      if (car.y > SIM_START_HOLD_Y && car.vy > 0) {
-        car.y = SIM_START_HOLD_Y;
-        car.vy *= -0.12;
-      }
+      compressAgainstFrontBarrier(car);
 
       if (car.x < SIM_LEFT_SAFE_X || car.x > SIM_RIGHT_SAFE_X) {
         const side = car.x < SIM_LEFT_SAFE_X ? -1 : 1;
@@ -466,6 +466,33 @@ function normalizeAngle(value: number): number {
   return angle;
 }
 
+function getBeltSpeedPxPerSec(timeMs: number): number {
+  const ramp = clamp(timeMs / BELT_RAMP_MS, 0, 1);
+  const mph = BELT_START_MPH + (BELT_FULL_MPH - BELT_START_MPH) * ramp;
+  return mph * MPH_TO_PX_PER_SEC;
+}
+
+function getNoseY(car: CarRuntime): number {
+  return car.y + Math.sin(car.angle) * SIM_CAR_NOSE_TO_CENTER;
+}
+
+function getTailY(car: CarRuntime): number {
+  return car.y - Math.sin(car.angle) * SIM_CAR_NOSE_TO_CENTER;
+}
+
+function compressAgainstFrontBarrier(car: CarRuntime): void {
+  const noseOverflow = getNoseY(car) - SIM_FRONT_LINE_Y;
+  if (noseOverflow <= 0) {
+    return;
+  }
+
+  car.y -= noseOverflow;
+  if (car.vy > 0) {
+    car.vy *= -0.08;
+  }
+  car.angularVelocity *= 0.82;
+}
+
 function statusToChaosType(status: CarStatus): ChaosType {
   if (status === "knocked-out" || status === "pileup") return "knockout";
   if (status === "side-hung") return "side-hang";
@@ -507,11 +534,15 @@ function resolveContact(
   const relativeSpeed = Math.hypot(b.vx - a.vx, b.vy - a.vy);
   const relativeYaw = Math.abs(normalizeAngle(a.angle - b.angle));
   const lateralCompression = Math.abs(dx) > 24 && overlapX > 36;
+  const front = a.racer.row === 0 && b.racer.row === 1 ? a : b.racer.row === 0 && a.racer.row === 1 ? b : undefined;
+  const rear = front === a ? b : front === b ? a : undefined;
   const restingBumperContact =
-    a.racer.row !== b.racer.row &&
-    a.racer.column === b.racer.column &&
-    Math.abs(dx) < 44 &&
-    Math.abs(dy) > 52 &&
+    front !== undefined &&
+    rear !== undefined &&
+    Math.abs(front.racer.column - rear.racer.column) <= 1 &&
+    Math.abs(dx) < 50 &&
+    getNoseY(rear) >= getTailY(front) - 8 &&
+    getNoseY(rear) <= getTailY(front) + 24 &&
     relativeSpeed < 26 &&
     relativeYaw < 0.24;
   const hardContact = impulse > 0.72 && (relativeSpeed > 40 || relativeYaw > 0.42 || lateralCompression);
@@ -528,6 +559,7 @@ function resolveContact(
   enforceActiveBounds(b);
 
   if (restingBumperContact) {
+    compressNoseToTail(front, rear);
     const sharedVx = (a.vx + b.vx) / 2;
     const sharedVy = (a.vy + b.vy) / 2;
     a.vx = a.vx * 0.7 + sharedVx * 0.3;
@@ -580,8 +612,6 @@ function resolveContact(
   a.status = timeMs > 6_000 && a.pileupContacts > 6 && impulse > 0.72 ? "pileup" : "wobbling";
   b.status = timeMs > 6_000 && b.pileupContacts > 6 && impulse > 0.72 ? "pileup" : "wobbling";
 
-  const front = a.racer.row === 0 && b.racer.row === 1 ? a : b.racer.row === 0 && a.racer.row === 1 ? b : undefined;
-  const rear = front === a ? b : front === b ? a : undefined;
   if (
     front &&
     rear &&
@@ -601,6 +631,22 @@ function resolveContact(
     const chaosType = timeMs > 6_000 && impulse > 0.72 ? "chain-reaction" : "bump";
     pushChaos(timeline, impulse > 0.72 ? a : b, timeMs, chaosType);
   }
+}
+
+function compressNoseToTail(front: CarRuntime, rear: CarRuntime): void {
+  const compression = getNoseY(rear) - getTailY(front);
+  if (compression < -4 || compression > 30) {
+    return;
+  }
+
+  const correction = clamp(compression + 6, 0, 18) * 0.35;
+  front.y = Math.min(SIM_START_HOLD_Y, front.y + correction * 0.22);
+  rear.y -= correction * 0.78;
+  const sharedVy = (front.vy + rear.vy) / 2;
+  front.vy = front.vy * 0.82 + sharedVy * 0.18;
+  rear.vy = rear.vy * 0.82 + sharedVy * 0.18;
+  compressAgainstFrontBarrier(front);
+  compressAgainstFrontBarrier(rear);
 }
 
 function settleContacts(cars: CarRuntime[]): void {

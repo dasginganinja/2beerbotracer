@@ -30,7 +30,7 @@ describe("race simulation", () => {
 
   it("stages exactly two non-overlapping rows of fifteen cars", () => {
     const demo = createDemoRace(1235);
-    const race = simulateRace({ seed: 1235, racers: demo.racers, durationMs: 1_000, trackAngleDeg: 2.5 });
+    const race = simulateRace({ seed: 1235, racers: demo.racers, durationMs: 1_000, trackAngleDeg: 6 });
     const firstFrame = race.frames[0];
     const columns = new Set(demo.racers.map((racer) => racer.column));
     const row0Y =
@@ -43,8 +43,8 @@ describe("race simulation", () => {
         .reduce((sum, car) => sum + car.y, 0) / 15;
 
     expect(columns.size).toBe(15);
-    expect(row0Y - row1Y).toBeGreaterThan(0.11);
-    expect(row0Y - row1Y).toBeLessThan(0.16);
+    expect(row0Y - row1Y).toBeGreaterThan(0.09);
+    expect(row0Y - row1Y).toBeLessThan(0.14);
   });
 
   it("produces deterministic final results for a seed and racer list", () => {
@@ -79,6 +79,20 @@ describe("race simulation", () => {
           expect(car.y).toBeLessThanOrEqual(0.76);
           expect(car.x).toBeGreaterThanOrEqual(0.07);
           expect(car.x).toBeLessThanOrEqual(0.93);
+        }
+      }
+    }
+  });
+
+  it("keeps the active car nose behind the bottom yellow line", () => {
+    const race = simulateRace({ seed: 2033, racers: createDemoRace(2033).racers, durationMs: 30_000 });
+    const noseToCenter = 54 / 520;
+    const frontLine = 446 / 520;
+
+    for (const frame of race.frames) {
+      for (const car of frame.cars) {
+        if (car.status === "running" || car.status === "recovering" || car.status === "wobbling") {
+          expect(car.y + Math.cos(car.angle) * noseToCenter).toBeLessThanOrEqual(frontLine + 0.004);
         }
       }
     }
@@ -134,7 +148,7 @@ describe("race simulation", () => {
     const survivorCar = finalFrame?.cars.find((car) => car.racerId === survivor?.racerId);
     const eliminatedCars = finalFrame?.cars.filter((car) => car.status !== "running") ?? [];
 
-    expect(survivorCar?.progress).toBeGreaterThan(0.72);
+    expect(survivorCar?.progress).toBeGreaterThan(0.69);
     expect(survivorCar?.progress).toBeLessThanOrEqual(0.76);
     expect(Math.abs(survivorCar?.angle ?? 0)).toBeLessThan(0.35);
     expect(eliminatedCars.length).toBeGreaterThan(0);
@@ -163,7 +177,7 @@ describe("race simulation", () => {
       seed: 2030,
       racers: createDemoRace(2030).racers,
       durationMs: 20_000,
-      trackAngleDeg: 2.5,
+      trackAngleDeg: 6,
     });
     const earlyMajorIncidents = race.timeline.filter(
       (event) => event.timeMs < 6_000 && event.chaosType !== "bump",
@@ -180,7 +194,7 @@ describe("race simulation", () => {
       seed: 2029,
       racers: createDemoRace(2029).racers,
       durationMs: 120_000,
-      trackAngleDeg: 2.5,
+      trackAngleDeg: 6,
     });
     const finalFrame = race.frames.at(-1);
 

@@ -26,7 +26,7 @@ const BELT_HEIGHT = 520;
 const SLOT_COLUMNS = 15;
 const SLOT_WIDTH = BELT_WIDTH / SLOT_COLUMNS;
 const CAR_SCALE = 0.92;
-const ROW_CENTER_SPACING = 70;
+const ROW_CENTER_SPACING = 54;
 const CAR_NOSE_TO_CENTER = 54 * CAR_SCALE;
 const CAR_BASE_ROTATION = Math.PI / 2;
 
@@ -60,7 +60,7 @@ export class TreadmillScene {
   private stateElapsedMs = 0;
   private raceElapsedMs = 0;
   private seed = 20260607;
-  private trackAngleDeg = 2.5;
+  private trackAngleDeg = 6;
   private lastHudKey = "";
   private lastLeaderboardKey = "";
   private calloutUntilMs = 0;
@@ -584,7 +584,7 @@ export class TreadmillScene {
   }
 
   private readTrackAngle(): number {
-    const raw = Number(this.params.get("trackAngleDeg") ?? "2.5");
-    return Number.isFinite(raw) ? Math.max(-4, Math.min(8, raw)) : 2.5;
+    const raw = Number(this.params.get("trackAngleDeg") ?? "6");
+    return Number.isFinite(raw) ? Math.max(-4, Math.min(8, raw)) : 6;
   }
 }
