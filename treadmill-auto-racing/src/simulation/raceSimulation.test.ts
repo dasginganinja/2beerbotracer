@@ -70,6 +70,18 @@ describe("race simulation", () => {
     }
   });
 
+  it("keeps active cars behind the bottom yellow line", () => {
+    const race = simulateRace({ seed: 2031, racers: createDemoRace(2031).racers, durationMs: 30_000 });
+
+    for (const frame of race.frames) {
+      for (const car of frame.cars) {
+        if (car.status === "running" || car.status === "recovering" || car.status === "wobbling") {
+          expect(car.y).toBeLessThanOrEqual(0.76);
+        }
+      }
+    }
+  });
+
   it("models treadmill-specific chaos events and car statuses", () => {
     const race = simulateRace({ seed: 99, racers, durationMs: 45_000 });
     const eventTypes = new Set(race.timeline.map((event) => event.chaosType));
@@ -99,7 +111,8 @@ describe("race simulation", () => {
     const survivorCar = finalFrame?.cars.find((car) => car.racerId === survivor?.racerId);
     const eliminatedCars = finalFrame?.cars.filter((car) => car.status !== "running") ?? [];
 
-    expect(survivorCar?.progress).toBeGreaterThan(0.78);
+    expect(survivorCar?.progress).toBeGreaterThan(0.72);
+    expect(survivorCar?.progress).toBeLessThanOrEqual(0.76);
     expect(Math.abs(survivorCar?.angle ?? 0)).toBeLessThan(0.35);
     expect(eliminatedCars.length).toBeGreaterThan(0);
     for (const car of eliminatedCars) {

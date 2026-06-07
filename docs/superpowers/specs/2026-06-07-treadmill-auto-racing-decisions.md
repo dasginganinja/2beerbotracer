@@ -58,6 +58,12 @@ Decision: The simulation should bias edge cars into hard side rails and let cars
 
 Reason: Reference footage shows side pressure is a normal feature of the race, not only a rare special event. The center may open while side groups stay jammed.
 
+### Treat the yellow line as the front boundary
+
+Decision: The bottom yellow line is the near/front limit of the active belt area. Cars point toward it, but active car noses should not cross it.
+
+Reason: The prior sim used the yellow line as the car center target, which let the rendered noses extend below the front boundary and into the track-direction label area.
+
 ### Add a track angle tuning knob
 
 Decision: Demo mode accepts `trackAngleDeg`, defaulting to a small positive angle. The angle adds down-screen assist against the belt so stable cars do not immediately slide back at race start.

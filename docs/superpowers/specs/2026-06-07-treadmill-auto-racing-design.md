@@ -8,7 +8,7 @@ The first proof should be fun without backend work: `/scene?mode=demo` runs fake
 
 ## Recommended Visual Direction
 
-Use the real treadmill format: a belt with two tight rows of 15 numbered cars staged on the yellow line at the bottom/closest-to-camera side of the treadmill. Cars point down toward the bottom of the scene, the belt direction is toward the top of the scene, and the second row sits close behind the first row rather than overlapping it. The system is exactly 15 cars wide; row two should not push through row one unless a row-one car falls back and creates a real interaction. The starting slots are only staging positions; during the race each row can sway horizontally and the whole pack can shift together. The side rails are hard constraints where cars can collect and stack. Belt motion is shown with horizontal stripes scrolling upward. As cars get knocked, slow down, or catch the belt friction, they naturally slide toward the top/off the far end of the belt. That can take out individual cars, small groups, or large swaths when cars catch on each other.
+Use the real treadmill format: a belt with two tight rows of 15 numbered cars staged at the yellow line on the bottom/closest-to-camera side of the treadmill. Cars point down toward the bottom of the scene, but their noses must not cross the yellow line. The belt direction is toward the top of the scene, and the second row sits close behind the first row rather than overlapping it. The system is exactly 15 cars wide; row two should not push through row one unless a row-one car falls back and creates a real interaction. The starting slots are only staging positions; during the race each row can sway horizontally and the whole pack can shift together. The side rails are hard constraints where cars can collect and stack. Belt motion is shown with horizontal stripes scrolling upward. As cars get knocked, slow down, or catch the belt friction, they naturally slide toward the top/off the far end of the belt. That can take out individual cars, small groups, or large swaths when cars catch on each other.
 
 Rejected alternatives:
 
@@ -122,6 +122,7 @@ Countdown:
 Race:
 
 - Cars start on the yellow line at the bottom/closest-to-camera side and jitter around their assigned slots while belt speed holds them roughly in place.
+- The yellow line is the front boundary. Active car noses should stay behind it; the simulated car center is held above the line by the nose-to-center distance.
 - Failed cars slide toward the top/off the far end as their wheels slow or catch belt friction.
 - The simulation uses explicit screen-space speeds: belt speed carries cars up-screen, wheel drive pushes cars back down-screen only while the car is pointed nose-down, and a hold correction keeps stable cars near the yellow line.
 - A `trackAngleDeg` tuning knob adds down-screen assist to model the slight physical treadmill incline and low Hot Wheels rolling resistance.

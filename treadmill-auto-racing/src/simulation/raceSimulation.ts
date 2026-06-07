@@ -109,7 +109,9 @@ const SIM_WIDTH = 1210;
 const SIM_HEIGHT = 520;
 const SIM_SLOT_COLUMNS = 15;
 const SIM_SLOT_WIDTH = SIM_WIDTH / SIM_SLOT_COLUMNS;
-const SIM_START_HOLD_Y = 446;
+const SIM_FRONT_LINE_Y = 446;
+const SIM_CAR_NOSE_TO_CENTER = 54;
+const SIM_START_HOLD_Y = SIM_FRONT_LINE_Y - SIM_CAR_NOSE_TO_CENTER;
 const SIM_ROW_SPACING = 70;
 const SIM_START_Y = [SIM_START_HOLD_Y, SIM_START_HOLD_Y - SIM_ROW_SPACING] as const;
 const SIM_LEFT_SAFE_X = 62;
@@ -280,6 +282,11 @@ export function simulateRace({ seed, racers, durationMs, trackAngleDeg = 2.5 }: 
       car.x += car.vx * SIM_STEP_SECONDS;
       car.y += car.vy * SIM_STEP_SECONDS;
       car.angle += car.angularVelocity * SIM_STEP_SECONDS;
+
+      if (car.y > SIM_START_HOLD_Y && car.vy > 0) {
+        car.y = SIM_START_HOLD_Y;
+        car.vy *= -0.12;
+      }
 
       if (car.x < SIM_LEFT_SAFE_X || car.x > SIM_RIGHT_SAFE_X) {
         const side = car.x < SIM_LEFT_SAFE_X ? -1 : 1;
