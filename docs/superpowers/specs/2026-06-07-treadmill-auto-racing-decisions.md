@@ -76,6 +76,8 @@ Decision: Front/rear cars that are close and aligned should share/damp velocity 
 
 Reason: The two rows are intentionally close together at the line. Treating that resting proximity as a collision every frame caused immediate pileups before any visible shift happened.
 
+Refinement: Contact handling must include positional separation and active-belt boundary enforcement. Velocity-only collision response lets cars overlap visually even when the event logic thinks they collided.
+
 ### Keep POC assets code-native
 
 Decision: Use Pixi `Graphics` and text for placeholder art.

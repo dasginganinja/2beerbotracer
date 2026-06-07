@@ -116,6 +116,7 @@ const SIM_ROW_SPACING = 70;
 const SIM_START_Y = [SIM_START_HOLD_Y, SIM_START_HOLD_Y - SIM_ROW_SPACING] as const;
 const SIM_LEFT_SAFE_X = 62;
 const SIM_RIGHT_SAFE_X = SIM_WIDTH - 62;
+const SIM_SIDE_RAIL_PADDING = 24;
 const SIM_OFF_FRONT_Y = -36;
 const SIM_STEP_MS = 100;
 const SIM_STEP_SECONDS = SIM_STEP_MS / 1000;
@@ -295,6 +296,7 @@ export function simulateRace({ seed, racers, durationMs, trackAngleDeg = 2.5 }: 
         car.angularVelocity += side * 0.08;
         car.traction = clamp(car.traction - 0.006, 0.05, 1);
       }
+      enforceActiveBounds(car);
 
       const maxYaw = car.status === "spinning" || car.status === "self-spun" ? 1.05 : ACTIVE_YAW_LIMIT_RAD;
       car.angle = Math.PI / 2 + clamp(normalizeAngle(car.angle - Math.PI / 2), -maxYaw, maxYaw);
@@ -332,13 +334,14 @@ export function simulateRace({ seed, racers, durationMs, trackAngleDeg = 2.5 }: 
         resolveContact(cars[i], cars[j], timeMs, random, timeline);
       }
     }
+    settleContacts(cars);
 
     for (const car of cars) {
       if (car.eliminated) {
         continue;
       }
 
-      car.x = clamp(car.x, 28, SIM_WIDTH - 28);
+      enforceActiveBounds(car);
       const nearSide = car.x < SIM_LEFT_SAFE_X || car.x > SIM_RIGHT_SAFE_X;
       if (
         nearSide &&
@@ -512,6 +515,17 @@ function resolveContact(
     relativeSpeed < 26 &&
     relativeYaw < 0.24;
   const hardContact = impulse > 0.72 && (relativeSpeed > 40 || relativeYaw > 0.42 || lateralCompression);
+  const canSeparateX =
+    Math.abs(dx) > 0.001 &&
+    (a.racer.row === b.racer.row || Math.abs(dy) < SIM_ROW_SPACING * 0.62);
+  const canSeparateY =
+    Math.abs(dy) > 0.001 &&
+    (a.racer.row !== b.racer.row || Math.abs(dx) < minX * 0.35);
+  const separateOnX = canSeparateX && (!canSeparateY || overlapX < overlapY * 0.9);
+
+  separateCars(a, b, separateOnX, separateOnX ? overlapX : overlapY, directionX, directionY, hardContact ? 0.82 : 0.46);
+  enforceActiveBounds(a);
+  enforceActiveBounds(b);
 
   if (restingBumperContact) {
     const sharedVx = (a.vx + b.vx) / 2;
@@ -586,6 +600,87 @@ function resolveContact(
   } else if (impulse > 0.42 && timeMs - a.lastChaosAtMs > 2200 && timeMs - b.lastChaosAtMs > 2200) {
     const chaosType = timeMs > 6_000 && impulse > 0.72 ? "chain-reaction" : "bump";
     pushChaos(timeline, impulse > 0.72 ? a : b, timeMs, chaosType);
+  }
+}
+
+function settleContacts(cars: CarRuntime[]): void {
+  for (let pass = 0; pass < 2; pass += 1) {
+    for (let i = 0; i < cars.length; i += 1) {
+      for (let j = i + 1; j < cars.length; j += 1) {
+        settleContact(cars[i], cars[j]);
+      }
+    }
+  }
+}
+
+function settleContact(a: CarRuntime, b: CarRuntime): void {
+  if (a.eliminated || b.eliminated || a.status === "side-hung" || b.status === "side-hung") {
+    return;
+  }
+
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const minX = 66;
+  const minY = 74;
+  if (Math.abs(dx) > minX || Math.abs(dy) > minY) {
+    return;
+  }
+
+  const overlapX = minX - Math.abs(dx);
+  const overlapY = minY - Math.abs(dy);
+  const directionX = dx === 0 ? 1 : Math.sign(dx);
+  const directionY = dy === 0 ? 1 : Math.sign(dy);
+  const separateOnX =
+    Math.abs(dx) > 0.001 &&
+    (a.racer.row === b.racer.row || Math.abs(dy) < SIM_ROW_SPACING * 0.62) &&
+    overlapX < overlapY * 0.95;
+
+  separateCars(a, b, separateOnX, separateOnX ? overlapX : overlapY, directionX, directionY, 0.62);
+  enforceActiveBounds(a);
+  enforceActiveBounds(b);
+}
+
+function separateCars(
+  a: CarRuntime,
+  b: CarRuntime,
+  separateOnX: boolean,
+  overlap: number,
+  directionX: number,
+  directionY: number,
+  strength: number,
+): void {
+  const correction = Math.max(0, overlap) * strength * 0.5;
+  if (correction <= 0) {
+    return;
+  }
+
+  if (separateOnX) {
+    a.x -= directionX * correction;
+    b.x += directionX * correction;
+  } else {
+    a.y -= directionY * correction;
+    b.y += directionY * correction;
+  }
+}
+
+function enforceActiveBounds(car: CarRuntime): void {
+  if (car.eliminated || car.status === "side-hung") {
+    return;
+  }
+
+  const minX = SIM_LEFT_SAFE_X + SIM_SIDE_RAIL_PADDING;
+  const maxX = SIM_RIGHT_SAFE_X - SIM_SIDE_RAIL_PADDING;
+  if (car.x < minX) {
+    car.x = minX;
+    car.vx = Math.max(0, car.vx) * 0.35;
+  } else if (car.x > maxX) {
+    car.x = maxX;
+    car.vx = Math.min(0, car.vx) * 0.35;
+  }
+
+  if (car.y > SIM_START_HOLD_Y) {
+    car.y = SIM_START_HOLD_Y;
+    car.vy = Math.min(0, car.vy) * 0.35;
   }
 }
 

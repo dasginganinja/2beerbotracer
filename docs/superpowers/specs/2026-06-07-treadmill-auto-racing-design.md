@@ -135,6 +135,7 @@ Race:
 - Side-gap hangs are rare probability events, not a normal outcome every race.
 - Demo simulation now uses a deterministic fixed-step model with per-car wheel speed, traction, stability, velocity, angular velocity, and contact impulses.
 - Resting front/rear bumper proximity is not a damaging collision; close aligned cars damp together until a real shift, yaw, or slide creates a hard hit.
+- Contacts must also correct position, not only velocity. Packed cars can compress, but active cars should not visually stack inside each other or escape the active belt boundaries.
 - Chain reactions should emerge after drift develops, not immediately from the starting grid compression.
 - Simulation decides survival, bumps, self-spins, side hangs, knockouts, and final result order until one survivor remains.
 - Survival board updates live.

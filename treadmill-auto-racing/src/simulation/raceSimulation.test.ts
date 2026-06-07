@@ -77,6 +77,29 @@ describe("race simulation", () => {
       for (const car of frame.cars) {
         if (car.status === "running" || car.status === "recovering" || car.status === "wobbling") {
           expect(car.y).toBeLessThanOrEqual(0.76);
+          expect(car.x).toBeGreaterThanOrEqual(0.07);
+          expect(car.x).toBeLessThanOrEqual(0.93);
+        }
+      }
+    }
+  });
+
+  it("separates same-row active cars instead of letting them stack", () => {
+    const race = simulateRace({ seed: 2032, racers: createDemoRace(2032).racers, durationMs: 20_000 });
+    const activeStatuses = new Set(["running", "recovering", "wobbling", "sliding-up"]);
+
+    for (const frame of race.frames.filter((candidate) => candidate.timeMs < 12_000)) {
+      for (const rowStart of [1, 16]) {
+        const rowCars = frame.cars
+          .filter((car) => activeStatuses.has(car.status))
+          .filter((car) => {
+            const slot = Number(car.racerId.replace("demo-racer-", ""));
+            return slot >= rowStart && slot < rowStart + 15;
+          })
+          .sort((a, b) => a.x - b.x);
+
+        for (let index = 1; index < rowCars.length; index += 1) {
+          expect(rowCars[index].x - rowCars[index - 1].x).toBeGreaterThan(0.035);
         }
       }
     }
