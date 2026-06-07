@@ -43,7 +43,8 @@ describe("race simulation", () => {
         .reduce((sum, car) => sum + car.y, 0) / 15;
 
     expect(columns.size).toBe(15);
-    expect(row0Y - row1Y).toBeGreaterThan(0.14);
+    expect(row0Y - row1Y).toBeGreaterThan(0.11);
+    expect(row0Y - row1Y).toBeLessThan(0.16);
   });
 
   it("produces deterministic final results for a seed and racer list", () => {

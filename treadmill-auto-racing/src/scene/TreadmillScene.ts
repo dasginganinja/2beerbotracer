@@ -26,7 +26,7 @@ const BELT_HEIGHT = 520;
 const SLOT_COLUMNS = 15;
 const SLOT_WIDTH = BELT_WIDTH / SLOT_COLUMNS;
 const CAR_SCALE = 0.92;
-const ROW_CENTER_SPACING = 88;
+const ROW_CENTER_SPACING = 70;
 const CAR_BASE_ROTATION = Math.PI / 2;
 
 type CarView = {
@@ -360,19 +360,21 @@ export class TreadmillScene {
     racers.forEach((racer) => {
       const root = new Container({ label: racer.id });
       const shadow = new Graphics()
-        .ellipse(0, 30, 54, 13)
+        .ellipse(0, 37, 64, 16)
         .fill({ color: 0x000000, alpha: 0.38 });
       const car = new Graphics()
-        .roundRect(-42, -20, 84, 40, 10)
+        .roundRect(-48, -31, 96, 62, 12)
         .fill(Number.parseInt(racer.color.slice(1), 16))
         .stroke({ width: 4, color: 0x111111 })
-        .circle(-24, 22, 8)
+        .circle(-29, 33, 9)
         .fill(0x050505)
-        .circle(24, 22, 8)
+        .circle(29, 33, 9)
         .fill(0x050505)
-        .rect(8, -14, 24, 11)
+        .roundRect(-28, -21, 24, 16, 4)
+        .fill({ color: 0xffffff, alpha: 0.6 })
+        .roundRect(9, -21, 25, 16, 4)
         .fill({ color: 0xffffff, alpha: 0.7 })
-        .poly([42, 0, 58, -10, 58, 10], true)
+        .poly([48, 0, 66, -16, 66, 16], true)
         .fill(Number.parseInt(racer.color.slice(1), 16))
         .stroke({ width: 3, color: 0x111111 });
 
@@ -380,13 +382,13 @@ export class TreadmillScene {
         text: `#${racer.slot} ${racer.displayName}`,
         style: {
           fontFamily: "Arial, sans-serif",
-          fontSize: 17,
+          fontSize: 15,
           fill: 0xffffff,
           stroke: { color: 0x000000, width: 4 },
         },
       });
       nameplate.anchor.set(0.5);
-      nameplate.position.set(0, -37);
+      nameplate.position.set(0, -46);
 
       root.addChild(shadow, car, nameplate);
       root.scale.set(CAR_SCALE);

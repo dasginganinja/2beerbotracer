@@ -8,7 +8,7 @@ The first proof should be fun without backend work: `/scene?mode=demo` runs fake
 
 ## Recommended Visual Direction
 
-Use the real treadmill format: a belt with two close rows of 15 numbered cars staged on the yellow line at the bottom/closest-to-camera side of the treadmill. Cars point down toward the bottom of the scene, the belt direction is toward the top of the scene, and the second row sits behind the first row rather than overlapping it. The system is exactly 15 cars wide; row two should not push through row one unless a row-one car falls back and creates a real interaction. The starting slots are only staging positions; during the race each row can sway horizontally and the whole pack can shift together. Belt motion is shown with horizontal stripes scrolling upward. As cars get knocked, slow down, or catch the belt friction, they naturally slide toward the top/off the far end of the belt. That can take out individual cars, small groups, or large swaths when cars catch on each other.
+Use the real treadmill format: a belt with two tight rows of 15 numbered cars staged on the yellow line at the bottom/closest-to-camera side of the treadmill. Cars point down toward the bottom of the scene, the belt direction is toward the top of the scene, and the second row sits close behind the first row rather than overlapping it. The system is exactly 15 cars wide; row two should not push through row one unless a row-one car falls back and creates a real interaction. The starting slots are only staging positions; during the race each row can sway horizontally and the whole pack can shift together. The side rails are hard constraints where cars can collect and stack. Belt motion is shown with horizontal stripes scrolling upward. As cars get knocked, slow down, or catch the belt friction, they naturally slide toward the top/off the far end of the belt. That can take out individual cars, small groups, or large swaths when cars catch on each other.
 
 Rejected alternatives:
 
@@ -129,6 +129,7 @@ Race:
 - Cars scale down as they move toward the top/far end of the treadmill.
 - Slot guides are faint and lateral centering is weak; the field should move like a dense pack, not 15 strict lanes.
 - The treadmill seam creates small recurring global pack shifts, with minor local side-to-side variation inside each row.
+- The belt speed should feel quick; stable cars hold position through wheel drive, incline assist, and compression, while unstable cars slide back fast once they lose alignment.
 - Incidents can chain through nearby cars, producing small pileups or large group knockouts.
 - Side-gap hangs are rare probability events, not a normal outcome every race.
 - Demo simulation now uses a deterministic fixed-step model with per-car wheel speed, traction, stability, velocity, angular velocity, and contact impulses.

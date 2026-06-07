@@ -110,15 +110,15 @@ const SIM_HEIGHT = 520;
 const SIM_SLOT_COLUMNS = 15;
 const SIM_SLOT_WIDTH = SIM_WIDTH / SIM_SLOT_COLUMNS;
 const SIM_START_HOLD_Y = 446;
-const SIM_ROW_SPACING = 88;
+const SIM_ROW_SPACING = 70;
 const SIM_START_Y = [SIM_START_HOLD_Y, SIM_START_HOLD_Y - SIM_ROW_SPACING] as const;
 const SIM_LEFT_SAFE_X = 62;
 const SIM_RIGHT_SAFE_X = SIM_WIDTH - 62;
 const SIM_OFF_FRONT_Y = -36;
 const SIM_STEP_MS = 100;
 const SIM_STEP_SECONDS = SIM_STEP_MS / 1000;
-const BELT_SPEED_PX_PER_SEC = 88;
-const MAX_DRIVE_SPEED_PX_PER_SEC = 104;
+const BELT_SPEED_PX_PER_SEC = 132;
+const MAX_DRIVE_SPEED_PX_PER_SEC = 148;
 const MAX_RECOVERY_SPEED_PX_PER_SEC = 42;
 const MAX_LATERAL_SPEED_PX_PER_SEC = 24;
 const TRACK_ANGLE_ASSIST_PX_PER_SEC_PER_DEG = 8;
@@ -259,10 +259,14 @@ export function simulateRace({ seed, racers, durationMs, trackAngleDeg = 2.5 }: 
       const beltVelocity = -BELT_SPEED_PX_PER_SEC;
       const driveVelocity = MAX_DRIVE_SPEED_PX_PER_SEC * car.wheelSpeed * car.traction * yawEfficiency;
       const holdCorrection = clamp((SIM_START_HOLD_Y - car.y) * 1.45, -MAX_RECOVERY_SPEED_PX_PER_SEC, MAX_RECOVERY_SPEED_PX_PER_SEC);
+      const seamPhase = timeMs / 2_700 + seed * 0.01;
+      const railBias = car.racer.column <= 2 ? -10 : car.racer.column >= 12 ? 10 : 0;
       const packDrift =
-        Math.sin(timeMs / 2_900 + seed * 0.01) * 15 +
+        Math.sin(seamPhase) * 18 +
+        Math.sign(Math.sin(seamPhase)) * 6 +
         Math.sin(timeMs / 4_600 + car.racer.row * 0.8) * 5 +
-        Math.sin(timeMs / 3_700 + car.racer.column * 0.42) * 4;
+        Math.sin(timeMs / 3_700 + car.racer.column * 0.42) * 4 +
+        railBias;
       const lateralCenter = car.racer.column * SIM_SLOT_WIDTH + SIM_SLOT_WIDTH / 2 + packDrift;
       const lateralVelocity = clamp((lateralCenter - car.x) * 0.22 * car.stability, -MAX_LATERAL_SPEED_PX_PER_SEC, MAX_LATERAL_SPEED_PX_PER_SEC);
       const jitterVelocity = (random() - 0.5) * 5;
@@ -276,6 +280,14 @@ export function simulateRace({ seed, racers, durationMs, trackAngleDeg = 2.5 }: 
       car.x += car.vx * SIM_STEP_SECONDS;
       car.y += car.vy * SIM_STEP_SECONDS;
       car.angle += car.angularVelocity * SIM_STEP_SECONDS;
+
+      if (car.x < SIM_LEFT_SAFE_X || car.x > SIM_RIGHT_SAFE_X) {
+        const side = car.x < SIM_LEFT_SAFE_X ? -1 : 1;
+        car.x = side < 0 ? Math.max(28, car.x) : Math.min(SIM_WIDTH - 28, car.x);
+        car.vx -= side * Math.min(Math.abs(car.vx) * 0.55 + 4, 22);
+        car.angularVelocity += side * 0.08;
+        car.traction = clamp(car.traction - 0.006, 0.05, 1);
+      }
 
       const maxYaw = car.status === "spinning" || car.status === "self-spun" ? 1.05 : ACTIVE_YAW_LIMIT_RAD;
       car.angle = Math.PI / 2 + clamp(normalizeAngle(car.angle - Math.PI / 2), -maxYaw, maxYaw);
@@ -298,7 +310,7 @@ export function simulateRace({ seed, racers, durationMs, trackAngleDeg = 2.5 }: 
         car.status = car.status === "running" ? "sliding-up" : car.status;
       }
 
-      if (car.y < SIM_START_HOLD_Y - 72 && car.vy < -52 && car.status === "running") {
+      if (car.y < SIM_START_HOLD_Y - 112 && car.vy < -58 && car.status === "running") {
         car.status = "sliding-up";
       }
       if (car.status === "sliding-up" && random() < car.stability * Math.max(car.traction, 0.2) * 0.08) {
@@ -471,8 +483,8 @@ function resolveContact(
 
   const dx = b.x - a.x;
   const dy = b.y - a.y;
-  const minX = 46;
-  const minY = 84;
+  const minX = 66;
+  const minY = 74;
   if (Math.abs(dx) > minX || Math.abs(dy) > minY) {
     return;
   }
@@ -488,11 +500,11 @@ function resolveContact(
   const restingBumperContact =
     a.racer.row !== b.racer.row &&
     a.racer.column === b.racer.column &&
-    Math.abs(dx) < 34 &&
-    Math.abs(dy) > 66 &&
+    Math.abs(dx) < 44 &&
+    Math.abs(dy) > 52 &&
     relativeSpeed < 26 &&
     relativeYaw < 0.24;
-  const hardContact = impulse > 0.72 && (relativeSpeed > 34 || relativeYaw > 0.42 || lateralCompression);
+  const hardContact = impulse > 0.72 && (relativeSpeed > 40 || relativeYaw > 0.42 || lateralCompression);
 
   if (restingBumperContact) {
     const sharedVx = (a.vx + b.vx) / 2;
@@ -516,6 +528,20 @@ function resolveContact(
     return;
   }
 
+  if (timeMs < 6_000) {
+    const earlyImpulse = impulse * 3.2;
+    a.vx -= directionX * earlyImpulse / a.mass;
+    b.vx += directionX * earlyImpulse / b.mass;
+    a.vy -= directionY * earlyImpulse * 0.55 / a.mass;
+    b.vy += directionY * earlyImpulse * 0.55 / b.mass;
+    a.angularVelocity -= directionX * impulse * 0.06;
+    b.angularVelocity += directionX * impulse * 0.06;
+    if (impulse > 0.78 && timeMs - a.lastChaosAtMs > 3_000 && timeMs - b.lastChaosAtMs > 3_000) {
+      pushChaos(timeline, impulse > 0.84 ? a : b, timeMs, "bump");
+    }
+    return;
+  }
+
   a.vx -= directionX * impulse * 12 / a.mass;
   b.vx += directionX * impulse * 12 / b.mass;
   a.vy -= directionY * impulse * 9 / a.mass;
@@ -530,8 +556,8 @@ function resolveContact(
 
   a.pileupContacts += impulse > 0.72 ? 1 : 0.45;
   b.pileupContacts += impulse > 0.72 ? 1 : 0.45;
-  a.status = a.pileupContacts > 6 && impulse > 0.72 ? "pileup" : "wobbling";
-  b.status = b.pileupContacts > 6 && impulse > 0.72 ? "pileup" : "wobbling";
+  a.status = timeMs > 6_000 && a.pileupContacts > 6 && impulse > 0.72 ? "pileup" : "wobbling";
+  b.status = timeMs > 6_000 && b.pileupContacts > 6 && impulse > 0.72 ? "pileup" : "wobbling";
 
   const front = a.racer.row === 0 && b.racer.row === 1 ? a : b.racer.row === 0 && a.racer.row === 1 ? b : undefined;
   const rear = front === a ? b : front === b ? a : undefined;
@@ -539,7 +565,7 @@ function resolveContact(
     front &&
     rear &&
     timeMs > 6_000 &&
-    rear.y < SIM_START_HOLD_Y - SIM_ROW_SPACING + 18 &&
+    rear.y < SIM_START_HOLD_Y - SIM_ROW_SPACING + 16 &&
     Math.abs(front.racer.column - rear.racer.column) <= 1 &&
     impulse > 0.66 &&
     relativeSpeed > 16 &&

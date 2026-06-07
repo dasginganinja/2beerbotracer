@@ -50,7 +50,13 @@ Decision: The POC should use a narrower belt, larger cars, faint slot guides, an
 
 Reason: The real treadmill does not have strict lanes. Cars are close enough to bump, shove, and shift together, with the second row tight against the first row's bumpers.
 
-Refinement: The pack is still exactly 15 cars wide. The second row sits behind the first row with real car-length spacing; it should not overlap or push through the first row unless a front-row car falls back and opens/contact creates a real interaction.
+Refinement: The pack is still exactly 15 cars wide. The second row sits close behind the first row without visual overlap; it should not push through the first row unless a front-row car falls back and opens/contact creates a real interaction.
+
+### Make the side rails part of normal race behavior
+
+Decision: The simulation should bias edge cars into hard side rails and let cars collect/stack at the sides before rare side-gap hangs.
+
+Reason: Reference footage shows side pressure is a normal feature of the race, not only a rare special event. The center may open while side groups stay jammed.
 
 ### Add a track angle tuning knob
 
