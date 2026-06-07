@@ -26,6 +26,7 @@ const BELT_HEIGHT = 520;
 const SLOT_COLUMNS = 15;
 const SLOT_WIDTH = BELT_WIDTH / SLOT_COLUMNS;
 const CAR_SCALE = 0.92;
+const ROW_CENTER_SPACING = 88;
 const CAR_BASE_ROTATION = Math.PI / 2;
 
 type CarView = {
@@ -415,7 +416,7 @@ export class TreadmillScene {
   ): void {
     const slotCenterX = BELT_X + view.racer.column * SLOT_WIDTH + SLOT_WIDTH / 2;
     const yellowLineY = BELT_Y + BELT_HEIGHT - 74;
-    const fallbackY = view.racer.row === 0 ? yellowLineY - 42 : yellowLineY - 90;
+    const fallbackY = view.racer.row === 0 ? yellowLineY - 42 : yellowLineY - 42 - ROW_CENTER_SPACING;
     const x = normalizedX === undefined ? slotCenterX : BELT_X + normalizedX * BELT_WIDTH;
     const y = normalizedY === undefined ? fallbackY : BELT_Y + normalizedY * BELT_HEIGHT;
     const activeAngle = Math.max(-0.72, Math.min(0.72, angle));

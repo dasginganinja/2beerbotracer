@@ -28,6 +28,24 @@ describe("race simulation", () => {
     expect(race.racers[29]).toMatchObject({ slot: 30, row: 1, column: 14 });
   });
 
+  it("stages exactly two non-overlapping rows of fifteen cars", () => {
+    const demo = createDemoRace(1235);
+    const race = simulateRace({ seed: 1235, racers: demo.racers, durationMs: 1_000, trackAngleDeg: 2.5 });
+    const firstFrame = race.frames[0];
+    const columns = new Set(demo.racers.map((racer) => racer.column));
+    const row0Y =
+      firstFrame.cars
+        .filter((car) => Number(car.racerId.replace("demo-racer-", "")) <= 15)
+        .reduce((sum, car) => sum + car.y, 0) / 15;
+    const row1Y =
+      firstFrame.cars
+        .filter((car) => Number(car.racerId.replace("demo-racer-", "")) > 15)
+        .reduce((sum, car) => sum + car.y, 0) / 15;
+
+    expect(columns.size).toBe(15);
+    expect(row0Y - row1Y).toBeGreaterThan(0.14);
+  });
+
   it("produces deterministic final results for a seed and racer list", () => {
     const first = simulateRace({ seed: 42, racers, durationMs: 45_000 });
     const second = simulateRace({ seed: 42, racers, durationMs: 45_000 });

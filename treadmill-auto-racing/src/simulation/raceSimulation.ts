@@ -110,7 +110,8 @@ const SIM_HEIGHT = 520;
 const SIM_SLOT_COLUMNS = 15;
 const SIM_SLOT_WIDTH = SIM_WIDTH / SIM_SLOT_COLUMNS;
 const SIM_START_HOLD_Y = 446;
-const SIM_START_Y = [SIM_START_HOLD_Y, SIM_START_HOLD_Y - 48] as const;
+const SIM_ROW_SPACING = 88;
+const SIM_START_Y = [SIM_START_HOLD_Y, SIM_START_HOLD_Y - SIM_ROW_SPACING] as const;
 const SIM_LEFT_SAFE_X = 62;
 const SIM_RIGHT_SAFE_X = SIM_WIDTH - 62;
 const SIM_OFF_FRONT_Y = -36;
@@ -279,7 +280,7 @@ export function simulateRace({ seed, racers, durationMs, trackAngleDeg = 2.5 }: 
       const maxYaw = car.status === "spinning" || car.status === "self-spun" ? 1.05 : ACTIVE_YAW_LIMIT_RAD;
       car.angle = Math.PI / 2 + clamp(normalizeAngle(car.angle - Math.PI / 2), -maxYaw, maxYaw);
 
-      const tractionShock = random() < (1 - car.stability) * 0.012 ? 0.07 : 0;
+      const tractionShock = random() < (1 - car.stability) * 0.006 ? 0.07 : 0;
       if (tractionShock > 0) {
         car.traction = clamp(car.traction - tractionShock, 0.08, 1);
         car.status = "wobbling";
@@ -470,8 +471,8 @@ function resolveContact(
 
   const dx = b.x - a.x;
   const dy = b.y - a.y;
-  const minX = 58;
-  const minY = 62;
+  const minX = 46;
+  const minY = 84;
   if (Math.abs(dx) > minX || Math.abs(dy) > minY) {
     return;
   }
@@ -483,15 +484,15 @@ function resolveContact(
   const directionY = dy === 0 ? (random() > 0.5 ? 1 : -1) : Math.sign(dy);
   const relativeSpeed = Math.hypot(b.vx - a.vx, b.vy - a.vy);
   const relativeYaw = Math.abs(normalizeAngle(a.angle - b.angle));
-  const lateralCompression = Math.abs(dx) > 22 && overlapX > 32;
+  const lateralCompression = Math.abs(dx) > 24 && overlapX > 36;
   const restingBumperContact =
     a.racer.row !== b.racer.row &&
     a.racer.column === b.racer.column &&
     Math.abs(dx) < 34 &&
-    Math.abs(dy) > 38 &&
+    Math.abs(dy) > 66 &&
     relativeSpeed < 26 &&
     relativeYaw < 0.24;
-  const hardContact = impulse > 0.64 && (relativeSpeed > 30 || relativeYaw > 0.38 || lateralCompression);
+  const hardContact = impulse > 0.72 && (relativeSpeed > 34 || relativeYaw > 0.42 || lateralCompression);
 
   if (restingBumperContact) {
     const sharedVx = (a.vx + b.vx) / 2;
@@ -538,7 +539,7 @@ function resolveContact(
     front &&
     rear &&
     timeMs > 6_000 &&
-    rear.y < SIM_START_HOLD_Y - 48 &&
+    rear.y < SIM_START_HOLD_Y - SIM_ROW_SPACING + 18 &&
     Math.abs(front.racer.column - rear.racer.column) <= 1 &&
     impulse > 0.66 &&
     relativeSpeed > 16 &&

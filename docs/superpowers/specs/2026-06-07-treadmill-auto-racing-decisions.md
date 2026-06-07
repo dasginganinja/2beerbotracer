@@ -50,6 +50,8 @@ Decision: The POC should use a narrower belt, larger cars, faint slot guides, an
 
 Reason: The real treadmill does not have strict lanes. Cars are close enough to bump, shove, and shift together, with the second row tight against the first row's bumpers.
 
+Refinement: The pack is still exactly 15 cars wide. The second row sits behind the first row with real car-length spacing; it should not overlap or push through the first row unless a front-row car falls back and opens/contact creates a real interaction.
+
 ### Add a track angle tuning knob
 
 Decision: Demo mode accepts `trackAngleDeg`, defaulting to a small positive angle. The angle adds down-screen assist against the belt so stable cars do not immediately slide back at race start.
