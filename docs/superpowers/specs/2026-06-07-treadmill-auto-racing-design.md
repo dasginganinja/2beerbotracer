@@ -126,7 +126,8 @@ Race:
 - Failed cars slide toward the top/off the far end as their wheels slow or catch belt friction.
 - The simulation uses explicit screen-space speeds: belt speed carries cars up-screen, wheel drive pushes cars back down-screen only while the car is pointed nose-down, and a hold correction keeps stable cars near the yellow line.
 - A `trackAngleDeg` tuning knob adds down-screen assist to model the slight physical treadmill incline and low Hot Wheels rolling resistance. The current demo default is 6 degrees.
-- Belt speed holds at a 2mph-equivalent value for the first 60 seconds, then ramps toward a 10mph-equivalent value.
+- Belt speed ramps from 0mph to a 2mph-equivalent start speed, holds that through 60 seconds, then ramps toward a 10mph-equivalent value.
+- Each car has stable traits keyed to its racer/slot, not the race seed: wheel speed, traction, stability, wobble, rolling resistance, yaw loss, and recovery.
 - Yaw matters: a car that gets too sideways loses drive efficiency and is carried upward unless traction and wheel speed recover.
 - Cars scale down as they move toward the top/far end of the treadmill.
 - Slot guides are faint and lateral centering is weak; the field should move like a dense pack, not 15 strict lanes.
@@ -135,8 +136,8 @@ Race:
 - Incidents can chain through nearby cars, producing small pileups or large group knockouts.
 - Side-gap hangs are rare probability events, not a normal outcome every race.
 - Demo simulation now uses a deterministic fixed-step model with per-car wheel speed, traction, stability, velocity, angular velocity, and contact impulses.
-- The model does not yet simulate individual wheel contact patches or metal material properties. It approximates those with low rolling resistance, yaw-based wheel-speed loss, traction recovery, limited bumper compression, and damped contact response.
-- The debug panel exposes the current knobs: belt speed, track angle, angle assist, rolling loss, yaw wheel loss/recovery, bumper compression, contact bounce, seam shift, active/sliding/eliminated counts, average wheel speed, and average traction.
+- The model does not yet simulate individual wheel contact patches or metal material properties. It approximates those with stable per-car traits, low rolling resistance, yaw-based wheel-speed loss, traction recovery, startup load, limited bumper compression, and damped contact response.
+- The debug panel exposes the current knobs: belt speed, startup ramp, track angle, angle assist, rolling loss, yaw wheel loss/recovery, bumper compression, contact bounce, seam shift, trait variance, early-upset chance, active/sliding/eliminated counts, average wheel speed, and average traction.
 - Resting front/rear bumper proximity is not a damaging collision; close aligned cars damp together until a real shift, yaw, or slide creates a hard hit.
 - Row two begins in light nose-to-tail compression with row one. The rear car nose compresses against the front car tail; the front car nose compresses against the yellow-line/front barrier.
 - Contacts must also correct position, not only velocity. Packed cars can compress, but active cars should not visually stack inside each other or escape the active belt boundaries.

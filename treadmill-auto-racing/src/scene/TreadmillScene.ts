@@ -41,6 +41,7 @@ const DEFAULT_DEBUG_METRICS = {
 const DEFAULT_PHYSICS_TUNING: PhysicsTuning = {
   beltStartMph: 2,
   beltFullMph: 10,
+  beltStartupRampMs: 9_000,
   beltHoldMs: 60_000,
   beltRampMs: 60_000,
   trackAngleDeg: 6,
@@ -51,6 +52,8 @@ const DEFAULT_PHYSICS_TUNING: PhysicsTuning = {
   maxBumperCompressionPx: 5,
   contactRestitution: 0.18,
   seamShiftPx: 18,
+  carTraitVariance: 1,
+  earlyUpsetChance: 0.26,
 };
 
 type CarView = {
@@ -384,7 +387,7 @@ export class TreadmillScene {
 
   private createDebugPanel(): void {
     const panel = new Graphics()
-      .roundRect(18, 742, 430, 305, 12)
+      .roundRect(18, 612, 430, 435, 12)
       .fill({ color: 0x05070a, alpha: 0.76 })
       .stroke({ width: 2, color: 0x596273, alpha: 0.75 });
 
@@ -397,7 +400,7 @@ export class TreadmillScene {
         lineHeight: 25,
       },
     });
-    this.debugText.position.set(36, 760);
+    this.debugText.position.set(36, 630);
     this.debugLayer.addChild(panel, this.debugText);
   }
 
@@ -563,6 +566,7 @@ export class TreadmillScene {
     return [
       "PHYSICS DEBUG",
       `belt mph       ${this.getCurrentBeltSpeedMph().toFixed(1)}`,
+      `startup ramp   ${(tuning.beltStartupRampMs / 1000).toFixed(1)}s`,
       `track angle    ${tuning.trackAngleDeg.toFixed(1)} deg`,
       `angle assist   ${tuning.trackAngleAssistPxPerSecPerDeg.toFixed(1)} px/s/deg`,
       `rolling loss   ${tuning.rollingResistancePerSecond.toFixed(3)} /s`,
@@ -571,6 +575,8 @@ export class TreadmillScene {
       `bumper crush   ${tuning.maxBumperCompressionPx.toFixed(1)} px`,
       `contact bounce ${tuning.contactRestitution.toFixed(2)}`,
       `seam shift     ${tuning.seamShiftPx.toFixed(1)} px`,
+      `trait variance ${tuning.carTraitVariance.toFixed(2)}`,
+      `early upset    ${tuning.earlyUpsetChance.toFixed(2)}`,
       `active         ${metrics.active}`,
       `sliding/wobble ${metrics.sliding}`,
       `eliminated     ${metrics.eliminated}`,

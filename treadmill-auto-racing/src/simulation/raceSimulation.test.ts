@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   createDemoRace,
+  getStableCarTraits,
   getAllowedTransition,
   simulateRace,
   type Racer,
@@ -55,6 +56,14 @@ describe("race simulation", () => {
     expect(first.results.map((result) => result.place)).toEqual([1, 2, 3, 4]);
     expect(new Set(first.results.map((result) => result.racerId)).size).toBe(racers.length);
     expect(first.timeline.some((event) => event.type === "chaos")).toBe(true);
+  });
+
+  it("keeps car rolling traits stable across race seeds", () => {
+    const firstRace = createDemoRace(5001);
+    const secondRace = createDemoRace(5002);
+
+    expect(getStableCarTraits(firstRace.racers[0])).toEqual(getStableCarTraits(secondRace.racers[0]));
+    expect(getStableCarTraits(firstRace.racers[0])).not.toEqual(getStableCarTraits(firstRace.racers[1]));
   });
 
   it("keeps sampled treadmill positions bounded near the belt", () => {
@@ -223,7 +232,7 @@ describe("race simulation", () => {
     expect(finalFrame?.cars.filter((car) => car.status === "running")).toHaveLength(1);
   });
 
-  it("holds 2mph for the first minute before ramping belt speed", () => {
+  it("ramps from 0mph to 2mph at startup before holding and later speeding up", () => {
     const race = simulateRace({
       seed: 2034,
       racers: createDemoRace(2034).racers,
@@ -231,12 +240,31 @@ describe("race simulation", () => {
       trackAngleDeg: 6,
     });
     const atStart = race.frames.find((frame) => frame.timeMs === 0);
+    const afterStartup = race.frames.find((frame) => frame.timeMs === 9_000);
     const atOneMinute = race.frames.find((frame) => frame.timeMs === 60_000);
     const atNinetySeconds = race.frames.find((frame) => frame.timeMs === 90_000);
 
-    expect(atStart?.beltSpeedMph).toBe(2);
+    expect(atStart?.beltSpeedMph).toBe(0);
+    expect(afterStartup?.beltSpeedMph).toBe(2);
     expect(atOneMinute?.beltSpeedMph).toBe(2);
     expect(atNinetySeconds?.beltSpeedMph).toBeCloseTo(6);
+  });
+
+  it("allows occasional real incidents during the 2mph hold without making every seed explode", () => {
+    const races = Array.from({ length: 18 }, (_, index) =>
+      simulateRace({
+        seed: 4100 + index,
+        racers: createDemoRace(4100 + index).racers,
+        durationMs: 120_000,
+        trackAngleDeg: 6,
+      }),
+    );
+    const racesWithEarlyIncidents = races.filter((race) =>
+      race.timeline.some((event) => event.timeMs < 60_000 && event.chaosType !== "bump"),
+    );
+
+    expect(racesWithEarlyIncidents.length).toBeGreaterThanOrEqual(3);
+    expect(racesWithEarlyIncidents.length).toBeLessThanOrEqual(12);
   });
 
   it("keeps side-gap hangs uncommon across seeded demo races", () => {

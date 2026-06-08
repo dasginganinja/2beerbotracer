@@ -72,9 +72,21 @@ Reason: Hot Wheels rolling resistance is low, and the physical treadmill has a s
 
 ### Ramp treadmill speed
 
-Decision: Demo belt speed holds at a 2mph-equivalent value for the first 60 seconds, then ramps toward a 10mph-equivalent value.
+Decision: Demo belt speed starts at 0mph, ramps to a 2mph-equivalent start speed, holds that through 60 seconds, then ramps toward a 10mph-equivalent value.
 
-Reason: The real race begins with cars held near the front line, then becomes more chaotic as the belt speed increases.
+Reason: The real race has a startup transient as the treadmill comes up to speed. That startup load gives weak rollers and twitchier cars a believable chance to wobble or lose momentum before the later speed ramp.
+
+### Add stable car traits
+
+Decision: Each car gets stable rolling traits keyed to its racer/slot rather than the race seed: wheel speed, traction, stability, wobble, rolling resistance, yaw loss, and recovery.
+
+Reason: Some real cars are naturally better or worse rollers. Race seeds should change incident timing and interaction patterns, but the same car should broadly feel like the same car across races.
+
+### Allow bounded early pack incidents
+
+Decision: During the 2mph hold, race-seeded severe stumbles can turn a front-row lost-momentum event into a real knockout and disturb adjacent row-two cars. The distribution is bounded so some races start clean and some produce early pack incidents.
+
+Reason: The previous model had visible wobble but no real incidents until roughly 70-90 seconds. The segment needs a nonzero chance of early pack chaos without making every race collapse immediately.
 
 ### Separate parked bumper contact from real hits
 
@@ -88,11 +100,11 @@ Second refinement: Starting row spacing must be based on the rear car nose meeti
 
 ### Expose physics knobs in-scene
 
-Decision: The POC scene shows a compact physics debug panel with current belt speed, track angle, angle assist, rolling resistance, yaw wheel-speed loss/recovery, bumper compression, contact bounce, seam shift, active/sliding/eliminated counts, average wheel speed, and average traction.
+Decision: The POC scene shows a compact physics debug panel with current belt speed, startup ramp, track angle, angle assist, rolling resistance, yaw wheel-speed loss/recovery, bumper compression, contact bounce, seam shift, trait variance, early-upset chance, active/sliding/eliminated counts, average wheel speed, and average traction.
 
 Reason: The physical model is still an approximation. Showing the knobs makes tuning conversations concrete and prevents hidden assumptions about friction, wheel speed, or collision surfaces.
 
-Current limitation: The simulation does not model each wheel or metal material properties directly. It uses per-car wheel speed, traction, yaw loss, rolling resistance, bumper compression caps, and contact damping as the tunable proxy.
+Current limitation: The simulation does not model each wheel or metal material properties directly. It uses stable per-car traits, wheel speed, traction, yaw loss, rolling resistance, startup load, bumper compression caps, and contact damping as the tunable proxy.
 
 ### Keep POC assets code-native
 
