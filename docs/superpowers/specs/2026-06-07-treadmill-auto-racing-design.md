@@ -125,17 +125,22 @@ Race:
 - The yellow line is the front boundary. Active car noses should stay behind it; the simulated car center is held above the line by the nose-to-center distance.
 - Failed cars slide toward the top/off the far end as their wheels slow or catch belt friction.
 - The simulation uses explicit screen-space speeds: belt speed carries cars up-screen, wheel drive pushes cars back down-screen only while the car is pointed nose-down, and a hold correction keeps stable cars near the yellow line.
+- The loop is multi-pass: apply belt/incline/wheel forces, apply global pack/seam pressure, resolve pair contacts repeatedly, enforce rail/front-wall boundaries, then derive events and broadcast statuses.
 - A `trackAngleDeg` tuning knob adds down-screen assist to model the slight physical treadmill incline and low Hot Wheels rolling resistance. The current demo default is 6 degrees.
 - Belt speed ramps from 0mph to a 2mph-equivalent start speed, holds that through 60 seconds, then ramps toward a 10mph-equivalent value.
 - Each car has stable traits keyed to its racer/slot, not the race seed: wheel speed, traction, stability, wobble, rolling resistance, yaw loss, and recovery.
 - Yaw matters: a car that gets too sideways loses drive efficiency and is carried upward unless traction and wheel speed recover.
 - Cars scale down as they move toward the top/far end of the treadmill.
+- The rendered treadmill uses a deeper perspective: a taller belt, narrower far end, tapered rails, and stronger depth scaling.
+- Cars include a visible front/nose profile so they read less like flat top-down tokens.
 - Slot guides are faint and lateral centering is weak; the field should move like a dense pack, not 15 strict lanes.
 - The treadmill seam creates small recurring global pack shifts, with minor local side-to-side variation inside each row.
 - The belt speed should feel quick; stable cars hold position through wheel drive, incline assist, and compression, while unstable cars slide back fast once they lose alignment.
 - Incidents can chain through nearby cars, producing small pileups or large group knockouts.
 - Side-gap hangs are rare probability events, not a normal outcome every race.
+- Side rail stacks can show up to four cars on a side. High side-hang races can force a small stack so the rail behavior is visible.
 - Demo simulation now uses a deterministic fixed-step model with per-car wheel speed, traction, stability, velocity, angular velocity, and contact impulses.
+- Car status labels are derived from continuous fields where possible. `running`, `wobbling`, and `sliding-up` are broadcast labels, while active/eliminated/side-hung/pileup flags carry the stronger event meaning.
 - The model does not yet simulate individual wheel contact patches or metal material properties. It approximates those with stable per-car traits, low rolling resistance, yaw-based wheel-speed loss, traction recovery, startup load, limited bumper compression, and damped contact response.
 - The debug panel exposes the current knobs: belt speed, startup ramp, track angle, angle assist, rolling loss, yaw wheel loss/recovery, bumper compression, contact bounce, seam shift, trait variance, early-upset chance, active/sliding/eliminated counts, average wheel speed, and average traction.
 - Resting front/rear bumper proximity is not a damaging collision; close aligned cars damp together until a real shift, yaw, or slide creates a hard hit.
@@ -145,6 +150,7 @@ Race:
 - Simulation decides survival, bumps, self-spins, side hangs, knockouts, and final result order until one survivor remains.
 - Survival board updates live.
 - Callout banners appear for chaos events.
+- The HUD only says "speeding up for more chaos" during the post-60-second speed ramp. During active callouts it shows incident-oriented copy; otherwise it uses neutral race copy.
 
 Finish:
 

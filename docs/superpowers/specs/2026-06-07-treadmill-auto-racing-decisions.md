@@ -38,6 +38,14 @@ Decision: The simulation should run a deterministic fixed-step loop with explici
 
 Reason: The real race behavior comes from cars losing or recovering momentum while the belt carries them toward the front. Scripted preassigned outcomes were too artificial and could not represent cars speeding back up, pileups, or front-row failures taking out cars behind them.
 
+Refinement: The loop now runs in multiple passes: force integration, global pack/seam pressure, repeated contact resolution, rail/front-wall enforcement, then event/status derivation. This is closer to a fluid-like pack simulation without committing to a full rigid-body engine yet.
+
+### Derive car statuses from physics
+
+Decision: Treat car statuses as broadcast/event labels derived from continuous motion fields where possible, not as the primary finite-state machine for every physical change.
+
+Reason: The physical behavior is event-driven. Wheel speed, traction, yaw, velocity, pileup pressure, and eliminated/side-hung flags should drive status labels, not the other way around.
+
 ### Make orientation part of the physics, not just the art
 
 Decision: The car's yaw changes its effective drive. When a car rotates too far away from nose-down alignment, its wheels stop countering the belt well and the belt carries it upward/off the far end.
@@ -57,6 +65,8 @@ Refinement: The pack is still exactly 15 cars wide. The second row sits close be
 Decision: The simulation should bias edge cars into hard side rails and let cars collect/stack at the sides before rare side-gap hangs.
 
 Reason: Reference footage shows side pressure is a normal feature of the race, not only a rare special event. The center may open while side groups stay jammed.
+
+Refinement: Rail stacks are supported up to four cars per side. High side-hang races can force a small side stack so the visual behavior appears in demo mode, while the cap prevents unlimited rail clutter.
 
 ### Treat the yellow line as the front boundary
 
@@ -105,6 +115,18 @@ Decision: The POC scene shows a compact physics debug panel with current belt sp
 Reason: The physical model is still an approximation. Showing the knobs makes tuning conversations concrete and prevents hidden assumptions about friction, wheel speed, or collision surfaces.
 
 Current limitation: The simulation does not model each wheel or metal material properties directly. It uses stable per-car traits, wheel speed, traction, yaw loss, rolling resistance, startup load, bumper compression caps, and contact damping as the tunable proxy.
+
+### Deepen the camera perspective
+
+Decision: Render the treadmill as a long perspective belt with a narrower far end, tapered rails, stronger distance scaling, and cars with visible front/nose profiles.
+
+Reason: Reference footage is not a flat overhead track. The camera sees the near start line, a long belt receding away, rail depth, and the front profiles of staged cars.
+
+### Make HUD copy phase-aware
+
+Decision: "Speeding up for more chaos" appears only during the post-60-second ramp toward the next belt speed. Normal racing uses neutral copy, and active incidents use chaos/incident copy.
+
+Reason: The text should describe what the belt is actually doing. Saying it is speeding up during the 2mph hold is misleading.
 
 ### Keep POC assets code-native
 

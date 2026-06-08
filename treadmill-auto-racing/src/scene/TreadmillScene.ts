@@ -20,12 +20,16 @@ const WIDTH = 1920;
 const HEIGHT = 1080;
 const CENTER_X = 960;
 const DEMO_RACE_SAFETY_MS = 120_000;
-const BELT_WIDTH = 1210;
+const BELT_WIDTH = 1300;
 const BELT_X = (WIDTH - BELT_WIDTH) / 2;
-const BELT_Y = 300;
-const BELT_HEIGHT = 520;
+const BELT_Y = 120;
+const BELT_HEIGHT = 790;
+const BELT_TOP_WIDTH_RATIO = 0.58;
+const BELT_LEFT_BOTTOM = BELT_X;
+const BELT_RIGHT_BOTTOM = BELT_X + BELT_WIDTH;
+const BELT_LEFT_TOP = CENTER_X - (BELT_WIDTH * BELT_TOP_WIDTH_RATIO) / 2;
+const BELT_RIGHT_TOP = CENTER_X + (BELT_WIDTH * BELT_TOP_WIDTH_RATIO) / 2;
 const SLOT_COLUMNS = 15;
-const SLOT_WIDTH = BELT_WIDTH / SLOT_COLUMNS;
 const CAR_SCALE = 0.92;
 const ROW_CENTER_SPACING = 105;
 const CAR_NOSE_TO_CENTER = 66 * CAR_SCALE;
@@ -59,11 +63,18 @@ const DEFAULT_PHYSICS_TUNING: PhysicsTuning = {
 type CarView = {
   racer: Racer;
   root: Container;
+  body: Graphics;
   shadow: Graphics;
   roofNumber: Text;
   lastProgress: number;
   lastOffset: number;
   lastStatus: string;
+};
+
+type ProjectedPoint = {
+  x: number;
+  y: number;
+  depthScale: number;
 };
 
 export class TreadmillScene {
@@ -234,48 +245,109 @@ export class TreadmillScene {
     const background = new Graphics()
       .rect(0, 0, WIDTH, HEIGHT)
       .fill(0x08090d)
-      .rect(0, 805, WIDTH, 275)
+      .rect(0, 855, WIDTH, 225)
       .fill(0x121722);
 
+    const railInsetBottom = 88;
+    const railInsetTop = 48;
     const deck = new Graphics()
-      .roundRect(BELT_X - 65, 245, BELT_WIDTH + 130, 640, 42)
+      .poly([
+        BELT_LEFT_TOP - railInsetTop,
+        BELT_Y - 42,
+        BELT_RIGHT_TOP + railInsetTop,
+        BELT_Y - 42,
+        BELT_RIGHT_BOTTOM + railInsetBottom,
+        BELT_Y + BELT_HEIGHT + 36,
+        BELT_LEFT_BOTTOM - railInsetBottom,
+        BELT_Y + BELT_HEIGHT + 36,
+      ], true)
       .fill(0x151922)
-      .stroke({ width: 8, color: 0x353b47 })
-      .roundRect(BELT_X, BELT_Y, BELT_WIDTH, BELT_HEIGHT, 26)
-      .fill(0x222936)
-      .stroke({ width: 6, color: 0xffcf33 });
+      .stroke({ width: 8, color: 0x353b47 });
 
     const belt = new Graphics()
-      .roundRect(BELT_X + 28, BELT_Y + 38, BELT_WIDTH - 56, BELT_HEIGHT - 76, 18)
+      .poly([
+        BELT_LEFT_TOP,
+        BELT_Y,
+        BELT_RIGHT_TOP,
+        BELT_Y,
+        BELT_RIGHT_BOTTOM,
+        BELT_Y + BELT_HEIGHT,
+        BELT_LEFT_BOTTOM,
+        BELT_Y + BELT_HEIGHT,
+      ], true)
       .fill(0x2d333f)
-      .stroke({ width: 4, color: 0x596273 });
+      .stroke({ width: 5, color: 0x596273 });
 
     this.beltStripeLayer.removeChildren();
-    for (let i = -2; i < 16; i += 1) {
+    for (let i = -2; i < 26; i += 1) {
+      const y = BELT_Y + 28 + i * 34;
+      const normalizedY = Math.max(0, Math.min(1, (y - BELT_Y) / BELT_HEIGHT));
+      const left = this.projectBeltPoint(0.035, normalizedY).x;
+      const right = this.projectBeltPoint(0.965, normalizedY).x;
       const stripe = new Graphics()
-        .rect(BELT_X + 48, BELT_Y + 55 + i * 34, BELT_WIDTH - 96, 11)
+        .rect(left, y, right - left, 11)
         .fill({ color: 0x3a414e, alpha: 0.36 });
       this.beltStripeLayer.addChild(stripe);
     }
 
     const rails = new Graphics()
-      .rect(BELT_X + 18, BELT_Y + 30, 22, BELT_HEIGHT - 60)
+      .poly([
+        BELT_LEFT_TOP - 36,
+        BELT_Y - 3,
+        BELT_LEFT_TOP - 5,
+        BELT_Y - 3,
+        BELT_LEFT_BOTTOM + 28,
+        BELT_Y + BELT_HEIGHT,
+        BELT_LEFT_BOTTOM - 34,
+        BELT_Y + BELT_HEIGHT,
+      ], true)
       .fill(0x0d0f14)
-      .rect(BELT_X + BELT_WIDTH - 40, BELT_Y + 30, 22, BELT_HEIGHT - 60)
+      .stroke({ width: 5, color: 0xf0ebe1 })
+      .poly([
+        BELT_RIGHT_TOP + 5,
+        BELT_Y - 3,
+        BELT_RIGHT_TOP + 36,
+        BELT_Y - 3,
+        BELT_RIGHT_BOTTOM + 34,
+        BELT_Y + BELT_HEIGHT,
+        BELT_RIGHT_BOTTOM - 28,
+        BELT_Y + BELT_HEIGHT,
+      ], true)
       .fill(0x0d0f14)
-      .rect(BELT_X + 40, BELT_Y + BELT_HEIGHT - 74, BELT_WIDTH - 80, 6)
-      .fill({ color: 0xffcf33, alpha: 0.55 });
+      .stroke({ width: 5, color: 0xf0ebe1 })
+      .rect(BELT_LEFT_BOTTOM + 36, BELT_Y + BELT_HEIGHT - 12, BELT_WIDTH - 72, 8)
+      .fill({ color: 0xffcf33, alpha: 0.7 });
 
     const sideGaps = new Graphics()
-      .roundRect(BELT_X + 38, BELT_Y + 80, 30, BELT_HEIGHT - 160, 10)
+      .poly([
+        BELT_LEFT_TOP + 18,
+        BELT_Y + 65,
+        BELT_LEFT_TOP + 36,
+        BELT_Y + 65,
+        BELT_LEFT_BOTTOM + 72,
+        BELT_Y + BELT_HEIGHT - 110,
+        BELT_LEFT_BOTTOM + 42,
+        BELT_Y + BELT_HEIGHT - 110,
+      ], true)
       .fill(0x050608)
-      .roundRect(BELT_X + BELT_WIDTH - 68, BELT_Y + 80, 30, BELT_HEIGHT - 160, 10)
+      .poly([
+        BELT_RIGHT_TOP - 36,
+        BELT_Y + 65,
+        BELT_RIGHT_TOP - 18,
+        BELT_Y + 65,
+        BELT_RIGHT_BOTTOM - 42,
+        BELT_Y + BELT_HEIGHT - 110,
+        BELT_RIGHT_BOTTOM - 72,
+        BELT_Y + BELT_HEIGHT - 110,
+      ], true)
       .fill(0x050608);
 
     const slots = new Graphics();
     for (let column = 0; column < SLOT_COLUMNS; column += 1) {
-      const x = BELT_X + column * SLOT_WIDTH;
-      slots.rect(x, BELT_Y + 125, 1, BELT_HEIGHT - 250).fill({ color: 0xffffff, alpha: 0.025 });
+      const normalizedX = column / SLOT_COLUMNS;
+      const top = this.projectBeltPoint(normalizedX, 0.12);
+      const bottom = this.projectBeltPoint(normalizedX, 0.84);
+      slots.moveTo(top.x, top.y).lineTo(bottom.x, bottom.y).stroke({ width: 1, color: 0xffffff, alpha: 0.025 });
     }
 
     const beltDirection = new Text({
@@ -288,7 +360,7 @@ export class TreadmillScene {
       },
     });
     beltDirection.anchor.set(0.5);
-    beltDirection.position.set(BELT_X + BELT_WIDTH - 200, BELT_Y + BELT_HEIGHT - 68);
+    beltDirection.position.set(BELT_X + BELT_WIDTH - 205, BELT_Y + BELT_HEIGHT - 48);
 
     const label = new Text({
       text: "TREADMILL RACING: 30 CARS / LAST SURVIVOR WINS",
@@ -300,7 +372,7 @@ export class TreadmillScene {
       },
     });
     label.anchor.set(0.5);
-    label.position.set(CENTER_X, 900);
+    label.position.set(CENTER_X, 975);
 
     this.trackLayer.addChild(background, deck, belt, this.beltStripeLayer, rails, sideGaps, slots, beltDirection, label);
   }
@@ -414,20 +486,30 @@ export class TreadmillScene {
         .ellipse(0, 37, 64, 16)
         .fill({ color: 0x000000, alpha: 0.38 });
       const car = new Graphics()
-        .roundRect(-48, -31, 96, 62, 12)
+        .roundRect(-49, -31, 98, 62, 11)
         .fill(Number.parseInt(racer.color.slice(1), 16))
         .stroke({ width: 4, color: 0x111111 })
-        .circle(-29, 33, 9)
+        .roundRect(31, -27, 21, 54, 8)
+        .fill(0x101010)
+        .rect(42, -19, 10, 38)
+        .fill({ color: 0xf1f4f8, alpha: 0.82 })
+        .circle(-31, 34, 9)
         .fill(0x050505)
-        .circle(29, 33, 9)
+        .circle(31, 34, 9)
         .fill(0x050505)
-        .roundRect(-28, -21, 24, 16, 4)
+        .roundRect(-30, -22, 26, 17, 4)
         .fill({ color: 0xffffff, alpha: 0.6 })
-        .roundRect(9, -21, 25, 16, 4)
+        .roundRect(4, -22, 27, 17, 4)
         .fill({ color: 0xffffff, alpha: 0.7 })
-        .poly([48, 0, 66, -16, 66, 16], true)
+        .poly([47, -28, 68, -18, 72, 0, 68, 18, 47, 28], true)
         .fill(Number.parseInt(racer.color.slice(1), 16))
-        .stroke({ width: 3, color: 0x111111 });
+        .stroke({ width: 3, color: 0x111111 })
+        .rect(62, -13, 7, 26)
+        .fill(0x111111)
+        .circle(66, -17, 4)
+        .fill(0xf7f1d0)
+        .circle(66, 17, 4)
+        .fill(0xf7f1d0);
 
       const roofNumber = new Text({
         text: String(racer.slot),
@@ -449,6 +531,7 @@ export class TreadmillScene {
       const view = {
         racer,
         root,
+        body: car,
         shadow,
         roofNumber,
         lastProgress: 0.5,
@@ -468,24 +551,39 @@ export class TreadmillScene {
     status: string = "running",
     renderScale: number = 1,
   ): void {
-    const slotCenterX = BELT_X + view.racer.column * SLOT_WIDTH + SLOT_WIDTH / 2;
-    const yellowLineY = BELT_Y + BELT_HEIGHT - 74;
+    const slotCenterX = (view.racer.column + 0.5) / SLOT_COLUMNS;
+    const yellowLineY = BELT_Y + BELT_HEIGHT - 12;
     const frontRowY = yellowLineY - CAR_NOSE_TO_CENTER;
     const fallbackY = view.racer.row === 0 ? frontRowY : frontRowY - ROW_CENTER_SPACING;
-    const x = normalizedX === undefined ? slotCenterX : BELT_X + normalizedX * BELT_WIDTH;
-    const y = normalizedY === undefined ? fallbackY : BELT_Y + normalizedY * BELT_HEIGHT;
+    const fallbackNormalizedY = (fallbackY - BELT_Y) / BELT_HEIGHT;
+    const projected = this.projectBeltPoint(
+      normalizedX === undefined ? slotCenterX : normalizedX,
+      normalizedY === undefined ? fallbackNormalizedY : normalizedY,
+    );
     const activeAngle = Math.max(-0.72, Math.min(0.72, angle));
     const statusAngle = status === "knocked-out" || status === "self-spun"
       ? Math.max(-1.05, Math.min(1.05, angle))
       : activeAngle;
 
-    view.root.position.set(x, y);
+    view.root.position.set(projected.x, projected.y);
     view.root.rotation = CAR_BASE_ROTATION + statusAngle;
     view.root.alpha = status === "knocked-out" ? 0.55 : 1;
-    view.root.scale.set(CAR_SCALE * renderScale);
-    view.root.zIndex = Math.round(y);
+    view.root.scale.set(CAR_SCALE * renderScale * projected.depthScale);
+    view.root.zIndex = Math.round(projected.y);
     view.shadow.rotation = -view.root.rotation;
     view.shadow.alpha = status === "knocked-out" ? 0.22 : 0.38;
+  }
+
+  private projectBeltPoint(normalizedX: number, normalizedY: number): ProjectedPoint {
+    const y = BELT_Y + normalizedY * BELT_HEIGHT;
+    const widthAtY = BELT_WIDTH * (BELT_TOP_WIDTH_RATIO + (1 - BELT_TOP_WIDTH_RATIO) * normalizedY);
+    const leftAtY = CENTER_X - widthAtY / 2;
+    const x = leftAtY + normalizedX * widthAtY;
+    return {
+      x,
+      y,
+      depthScale: 0.62 + normalizedY * 0.52,
+    };
   }
 
   private updateHud(force: boolean): void {
@@ -536,7 +634,16 @@ export class TreadmillScene {
     if (this.state === "REGISTRATION_CLOSED") return `${this.race.racers.length} cars staged`;
     if (this.state === "COUNTDOWN") return "Hands off the belt. Physics is booting.";
     if (this.state === "RACING") {
-      return `${progressSeconds}s | track ${this.getCurrentBeltSpeedMph().toFixed(1)} mph | angle ${this.trackAngleDeg.toFixed(1)}deg | speeding up for more chaos`;
+      const speedMph = this.getCurrentBeltSpeedMph();
+      const tuning = this.getPhysicsTuning();
+      const isSpeedRamp = this.raceElapsedMs >= tuning.beltHoldMs && speedMph < tuning.beltFullMph - 0.05;
+      const isChaotic = this.elapsedMs < this.calloutUntilMs;
+      const message = isChaotic
+        ? "incident on the belt"
+        : isSpeedRamp
+          ? "speeding up for more chaos"
+          : "cars are fighting the belt";
+      return `${progressSeconds}s | track ${speedMph.toFixed(1)} mph | angle ${this.trackAngleDeg.toFixed(1)}deg | ${message}`;
     }
     if (this.state === "PHOTO_FINISH") return "Race control is counting survivors and side-gap victims";
     if (this.state === "RESULTS") return "Resetting for the next grid soon";
@@ -659,6 +766,7 @@ export class TreadmillScene {
           x: car.x + ((nextCar?.x ?? car.x) - car.x) * t,
           y: car.y + ((nextCar?.y ?? car.y) - car.y) * t,
           scale: car.scale + ((nextCar?.scale ?? car.scale) - car.scale) * t,
+          stackIndex: nextCar?.stackIndex ?? car.stackIndex,
         };
       }),
     };

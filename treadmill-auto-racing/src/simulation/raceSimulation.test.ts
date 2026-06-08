@@ -276,6 +276,18 @@ describe("race simulation", () => {
     expect(sideHangRaces.length).toBeLessThanOrEqual(8);
   });
 
+  it("supports rail stacks but caps them at four cars per side", () => {
+    const races = Array.from({ length: 30 }, (_, index) =>
+      simulateRace({ seed: 4200 + index, racers: createDemoRace(4200 + index).racers, durationMs: 120_000 }),
+    );
+    const sideHungCars = races.flatMap((race) =>
+      race.frames.at(-1)?.cars.filter((car) => car.status === "side-hung") ?? [],
+    );
+
+    expect(sideHungCars.some((car) => (car.stackIndex ?? 0) >= 1)).toBe(true);
+    expect(Math.max(...sideHungCars.map((car) => car.stackIndex ?? 0))).toBeLessThanOrEqual(3);
+  });
+
   it("allows only explicit race state transitions", () => {
     expect(getAllowedTransition("REGISTRATION_OPEN", "COUNTDOWN")).toBe(false);
     expect(getAllowedTransition("REGISTRATION_OPEN", "REGISTRATION_CLOSED")).toBe(true);

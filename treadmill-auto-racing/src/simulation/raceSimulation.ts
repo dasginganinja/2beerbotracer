@@ -47,6 +47,7 @@ export type RaceFrame = {
     x: number;
     y: number;
     scale: number;
+    stackIndex?: number;
   }>;
 };
 
@@ -147,6 +148,7 @@ type CarRuntime = {
   earlyUpsetUsed: boolean;
   earlyUpsetCanEliminate: boolean;
   boggedUntilMs: number;
+  sideStackIndex?: number;
 };
 
 const SIM_WIDTH = 1210;
@@ -303,7 +305,7 @@ export function simulateRace({ seed, racers, durationMs, trackAngleDeg = 6 }: Si
     trackAngleDeg: clamp(trackAngleDeg, -4, 8),
   };
   const raceAllowsSideHangs = seed % 4 === 0;
-  const sideHangLimit = raceAllowsSideHangs ? 1 + (seed % 12 === 0 ? 1 : 0) : 0;
+  const sideHangLimit = raceAllowsSideHangs ? 2 + (seed % 12 === 0 ? 2 : 0) : 0;
   const trackAngleAssistVelocity = tuning.trackAngleDeg * tuning.trackAngleAssistPxPerSecPerDeg;
   let sideHangs = 0;
   const cars = racers.map<CarRuntime>((racer, index) => {
@@ -341,6 +343,7 @@ export function simulateRace({ seed, racers, durationMs, trackAngleDeg = 6 }: Si
       earlyUpsetUsed: false,
       earlyUpsetCanEliminate: severeEarlyUpset,
       boggedUntilMs: 0,
+      sideStackIndex: undefined,
     };
   });
   const frames: RaceFrame[] = [];
@@ -485,12 +488,15 @@ export function simulateRace({ seed, racers, durationMs, trackAngleDeg = 6 }: Si
       }
     }
 
-    for (let i = 0; i < cars.length; i += 1) {
-      for (let j = i + 1; j < cars.length; j += 1) {
-        resolveContact(cars[i], cars[j], timeMs, random, timeline);
+    applyGlobalPackPressure(cars, timeMs, seed);
+    for (let pass = 0; pass < 2; pass += 1) {
+      for (let i = 0; i < cars.length; i += 1) {
+        for (let j = i + 1; j < cars.length; j += 1) {
+          resolveContact(cars[i], cars[j], timeMs, random, timeline);
+        }
       }
+      settleContacts(cars);
     }
-    settleContacts(cars);
 
     for (const car of cars) {
       if (car.eliminated) {
@@ -511,6 +517,8 @@ export function simulateRace({ seed, racers, durationMs, trackAngleDeg = 6 }: Si
         car.eliminated = true;
         car.eliminatedAtMs = timeMs;
         car.lastChaosType = "side-hang";
+        car.sideStackIndex = getNextSideStackIndex(cars, car);
+        placeSideStack(car);
         sideHangs += 1;
         pushChaos(timeline, car, timeMs, "side-hang");
       }
@@ -573,18 +581,22 @@ export function simulateRace({ seed, racers, durationMs, trackAngleDeg = 6 }: Si
   const survivor = cars
     .filter((car) => !car.eliminated)
     .sort((a, b) => b.stability + b.traction - (a.stability + a.traction))[0];
-  if (sideHangLimit > 0 && sideHangs === 0) {
+  const forcedSideHangMinimum = sideHangLimit >= 4 ? 2 : sideHangLimit > 0 ? 1 : 0;
+  while (sideHangs < forcedSideHangMinimum) {
     const sideHangCandidate = cars
-      .filter((car) => car !== survivor && (car.racer.column <= 1 || car.racer.column >= 13))
+      .filter((car) => car !== survivor && car.status !== "side-hung" && (car.racer.column <= 1 || car.racer.column >= 13))
       .sort((a, b) => (a.eliminatedAtMs ?? durationMs) - (b.eliminatedAtMs ?? durationMs))[0];
     if (sideHangCandidate) {
       sideHangCandidate.status = "side-hung";
       sideHangCandidate.eliminated = true;
       sideHangCandidate.eliminatedAtMs = Math.min(sideHangCandidate.eliminatedAtMs ?? raceEndTimeMs, raceEndTimeMs * 0.82);
-      sideHangCandidate.x = sideHangCandidate.racer.column <= 1 ? SIM_LEFT_SAFE_X - 18 : SIM_RIGHT_SAFE_X + 18;
-      sideHangCandidate.y = Math.min(sideHangCandidate.y, SIM_START_HOLD_Y - 150);
+      sideHangCandidate.sideStackIndex = getNextSideStackIndex(cars, sideHangCandidate);
+      placeSideStack(sideHangCandidate);
       sideHangCandidate.lastChaosType = "side-hang";
+      sideHangs += 1;
       pushChaos(timeline, sideHangCandidate, sideHangCandidate.eliminatedAtMs, "side-hang");
+    } else {
+      break;
     }
   }
   for (const car of cars) {
@@ -715,6 +727,29 @@ function finalStatus(status: CarStatus): CarStatus {
   if (status === "spinning") return "self-spun";
   if (status === "pileup") return "knocked-out";
   return status;
+}
+
+function deriveFrameStatus(car: CarRuntime): CarStatus {
+  if (car.eliminated) {
+    return finalStatus(car.status);
+  }
+  if (car.status === "side-hung" || car.status === "pileup" || car.status === "self-spun" || car.status === "spinning") {
+    return car.status;
+  }
+  const yawError = Math.abs(normalizeAngle(car.angle - Math.PI / 2));
+  if (car.pileupContacts > 5.5) {
+    return "pileup";
+  }
+  if (car.y < SIM_START_HOLD_Y - 90 || car.wheelSpeed < 0.18 || yawError > 0.58) {
+    return "sliding-up";
+  }
+  if (car.traction < 0.42 || yawError > 0.28 || Math.abs(car.angularVelocity) > 0.065) {
+    return "wobbling";
+  }
+  if (car.status === "recovering") {
+    return "recovering";
+  }
+  return "running";
 }
 
 function resolveContact(
@@ -909,11 +944,39 @@ function compressNoseToTail(front: CarRuntime, rear: CarRuntime): void {
 }
 
 function settleContacts(cars: CarRuntime[]): void {
-  for (let pass = 0; pass < 2; pass += 1) {
+  for (let pass = 0; pass < 3; pass += 1) {
     for (let i = 0; i < cars.length; i += 1) {
       for (let j = i + 1; j < cars.length; j += 1) {
         settleContact(cars[i], cars[j]);
       }
+    }
+  }
+}
+
+function applyGlobalPackPressure(cars: CarRuntime[], timeMs: number, seed: number): void {
+  const seamPulse = Math.max(0, Math.sin(timeMs / 2_700 + seed * 0.01));
+  for (const car of cars) {
+    if (car.eliminated || car.status === "side-hung") {
+      continue;
+    }
+
+    const neighbors = cars.filter(
+      (candidate) =>
+        candidate !== car &&
+        !candidate.eliminated &&
+        Math.abs(candidate.x - car.x) < 95 &&
+        Math.abs(candidate.y - car.y) < 130,
+    );
+    const pressure = clamp(neighbors.length / 5, 0, 1);
+    if (pressure <= 0) {
+      continue;
+    }
+
+    car.vx += Math.sin(timeMs / 1_400 + car.racer.slot) * pressure * seamPulse * 1.8;
+    car.angularVelocity += Math.sin(timeMs / 1_100 + car.racer.column) * pressure * seamPulse * 0.012;
+    car.traction = clamp(car.traction - pressure * seamPulse * 0.0018, 0.04, 1);
+    if (pressure > 0.65 && seamPulse > 0.75) {
+      car.pileupContacts += 0.08;
     }
   }
 }
@@ -943,6 +1006,36 @@ function settleContact(a: CarRuntime, b: CarRuntime): void {
   separateCars(a, b, separateOnX, separateOnX ? overlapX : overlapY, directionX, directionY, 0.62);
   enforceActiveBounds(a);
   enforceActiveBounds(b);
+}
+
+function getNextSideStackIndex(cars: CarRuntime[], car: CarRuntime): number {
+  const onLeft = car.x < SIM_WIDTH / 2;
+  const used = new Set(
+    cars
+      .filter((candidate) => candidate.status === "side-hung" && candidate.sideStackIndex !== undefined)
+      .filter((candidate) => (onLeft ? candidate.x < SIM_WIDTH / 2 : candidate.x >= SIM_WIDTH / 2))
+      .map((candidate) => candidate.sideStackIndex),
+  );
+
+  for (let index = 0; index < 4; index += 1) {
+    if (!used.has(index)) {
+      return index;
+    }
+  }
+  return 3;
+}
+
+function placeSideStack(car: CarRuntime): void {
+  const stackIndex = car.sideStackIndex ?? 0;
+  const onLeft = car.x < SIM_WIDTH / 2 || car.racer.column <= 1;
+  const xBase = onLeft ? SIM_LEFT_SAFE_X - 18 : SIM_RIGHT_SAFE_X + 18;
+  const xStack = onLeft ? xBase - stackIndex * 13 : xBase + stackIndex * 13;
+  car.x = xStack;
+  car.y = Math.min(car.y, SIM_START_HOLD_Y - 125 - stackIndex * 24);
+  car.angle = Math.PI / 2 + (onLeft ? -0.32 : 0.32) + stackIndex * 0.07;
+  car.vx = 0;
+  car.vy = 0;
+  car.angularVelocity = 0;
 }
 
 function disturbRearPack(
@@ -1043,7 +1136,10 @@ function pushChaos(
 
 function toFrame(timeMs: number, cars: CarRuntime[]): RaceFrame {
   const activeCars = cars.filter((car) => !car.eliminated);
-  const sliding = cars.filter((car) => car.status === "sliding-up" || car.status === "wobbling" || car.status === "spinning").length;
+  const sliding = cars.filter((car) => {
+    const status = deriveFrameStatus(car);
+    return status === "sliding-up" || status === "wobbling" || status === "spinning" || status === "pileup";
+  }).length;
   return {
     timeMs,
     beltSpeedMph: getBeltSpeedMph(timeMs),
@@ -1063,10 +1159,11 @@ function toFrame(timeMs: number, cars: CarRuntime[]): RaceFrame {
       progress: clamp(car.y / SIM_HEIGHT, -1, 1),
       trackOffset: clamp((car.x - (car.racer.column * SIM_SLOT_WIDTH + SIM_SLOT_WIDTH / 2)) / 84, -1, 1),
       angle: car.angle - Math.PI / 2,
-      status: car.eliminated ? finalStatus(car.status) : car.status,
+      status: deriveFrameStatus(car),
       x: car.x / SIM_WIDTH,
       y: car.y / SIM_HEIGHT,
-      scale: clamp(0.82 + car.y / SIM_HEIGHT * 0.22, 0.82, 1.08),
+      scale: clamp(0.66 + car.y / SIM_HEIGHT * 0.46, 0.62, 1.16),
+      stackIndex: car.sideStackIndex,
     })),
   };
 }
