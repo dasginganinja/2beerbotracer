@@ -226,12 +226,15 @@ Milestone 2: Demo simulation
 - Define scene states and transitions.
 - Generate 30 fake racers with fixed slots.
 - Deterministically simulate treadmill drift, bumps, side hangs, knockouts, self-spins, and one-survivor final results from seed.
+- Advance physics at 50ms ticks so recovery, yaw, and collision reactions are smoother than the broadcast render cadence.
+- Keep eliminated cars sliding up the belt unless they are explicitly side-hung.
 - Emit treadmill-specific chaos callouts.
 
 Milestone 3: Pixi scene
 
 - Render 1920x1080 treadmill belt with 30 slots in two rows.
 - Use larger cars on a narrower belt so side-by-side spacing reads clearly in OBS.
+- Map simulation Y into the perspective belt so the front row starts on the yellow line and the second row stays bumper-tight behind it.
 - Render cars/nameplates.
 - Render HUD, countdown, leaderboard, callouts, results.
 - Run `/scene?mode=demo`.

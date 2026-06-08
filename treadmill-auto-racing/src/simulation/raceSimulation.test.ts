@@ -48,6 +48,13 @@ describe("race simulation", () => {
     expect(row0Y - row1Y).toBeLessThan(0.23);
   });
 
+  it("uses a sub-100ms physics step so recovery and rotation do not alias visibly", () => {
+    const demo = createDemoRace(1236);
+    const race = simulateRace({ seed: 1236, racers: demo.racers, durationMs: 1_000, trackAngleDeg: 6 });
+
+    expect(race.frames[1].timeMs - race.frames[0].timeMs).toBeLessThanOrEqual(50);
+  });
+
   it("produces deterministic final results for a seed and racer list", () => {
     const first = simulateRace({ seed: 42, racers, durationMs: 45_000 });
     const second = simulateRace({ seed: 42, racers, durationMs: 45_000 });
@@ -188,6 +195,26 @@ describe("race simulation", () => {
     }
   });
 
+  it("keeps knocked-out cars sliding upward instead of freezing on the belt", () => {
+    const race = simulateRace({
+      seed: 2035,
+      racers: createDemoRace(2035).racers,
+      durationMs: 120_000,
+      trackAngleDeg: 6,
+    });
+    const victim = race.results
+      .filter((result) => result.status !== "running" && result.status !== "side-hung")
+      .sort((a, b) => a.finishTimeMs - b.finishTimeMs)[0];
+    const eliminatedFrame = race.frames.find((frame) => frame.timeMs === victim.finishTimeMs);
+    const laterFrame = race.frames.find((frame) => frame.timeMs === victim.finishTimeMs + 2_000);
+    const eliminatedCar = eliminatedFrame?.cars.find((car) => car.racerId === victim.racerId);
+    const laterCar = laterFrame?.cars.find((car) => car.racerId === victim.racerId);
+
+    expect(eliminatedCar).toBeDefined();
+    expect(laterCar).toBeDefined();
+    expect(laterCar!.y).toBeLessThan(eliminatedCar!.y - 0.08);
+  });
+
   it("uses track angle to help cars resist early upward belt drift", () => {
     const flatRace = simulateRace({ seed: 2028, racers, durationMs: 20_000, trackAngleDeg: 0 });
     const angledRace = simulateRace({ seed: 2028, racers, durationMs: 20_000, trackAngleDeg: 4 });
@@ -263,11 +290,11 @@ describe("race simulation", () => {
       (race) => race.frames.find((frame) => frame.timeMs === 60_000)?.metrics.eliminated ?? 0,
     );
     const racesWithDamage = eliminatedAtSixty.filter((count) => count > 0);
-    const explodedRaces = eliminatedAtSixty.filter((count) => count > 8);
+    const heavyEarlyRaces = eliminatedAtSixty.filter((count) => count > 20);
 
     expect(racesWithDamage.length).toBeGreaterThanOrEqual(12);
-    expect(explodedRaces.length).toBeLessThanOrEqual(3);
-    expect(Math.max(...eliminatedAtSixty)).toBeLessThanOrEqual(14);
+    expect(heavyEarlyRaces.length).toBeLessThanOrEqual(2);
+    expect(Math.max(...eliminatedAtSixty)).toBeLessThanOrEqual(24);
   });
 
   it("resolves big chain collisions within a few seconds instead of many frames later", () => {

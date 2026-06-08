@@ -34,6 +34,9 @@ const CAR_SCALE = 0.92;
 const ROW_CENTER_SPACING = 105;
 const CAR_NOSE_TO_CENTER = 66 * CAR_SCALE;
 const CAR_BASE_ROTATION = Math.PI / 2;
+const SIM_FRONT_CENTER_NORMALIZED_Y = 380 / 520;
+const SIM_ROW_SPACING_NORMALIZED_Y = 109 / 520;
+const VISUAL_OFF_FRONT_NORMALIZED_Y = 0.03;
 const DEFAULT_BELT_SPEED_MPH = 2;
 const DEFAULT_DEBUG_METRICS = {
   active: 0,
@@ -559,9 +562,10 @@ export class TreadmillScene {
     const frontRowY = yellowLineY - CAR_NOSE_TO_CENTER;
     const fallbackY = view.racer.row === 0 ? frontRowY : frontRowY - ROW_CENTER_SPACING;
     const fallbackNormalizedY = (fallbackY - BELT_Y) / BELT_HEIGHT;
+    const projectedY = normalizedY === undefined ? fallbackNormalizedY : this.mapSimulationYToBeltY(normalizedY);
     const projected = this.projectBeltPoint(
       normalizedX === undefined ? slotCenterX : normalizedX,
-      normalizedY === undefined ? fallbackNormalizedY : normalizedY,
+      projectedY,
     );
     const activeAngle = Math.max(-0.72, Math.min(0.72, angle));
     const statusAngle = status === "knocked-out" || status === "self-spun"
@@ -587,6 +591,22 @@ export class TreadmillScene {
       y,
       depthScale: 0.62 + normalizedY * 0.52,
     };
+  }
+
+  private mapSimulationYToBeltY(normalizedY: number): number {
+    const yellowLineY = BELT_Y + BELT_HEIGHT - 12;
+    const frontCenterY = yellowLineY - CAR_NOSE_TO_CENTER;
+    const frontCenterNormalizedY = (frontCenterY - BELT_Y) / BELT_HEIGHT;
+    const rowDepth = Math.max(0, SIM_FRONT_CENTER_NORMALIZED_Y - normalizedY);
+    const rowDepths = rowDepth / SIM_ROW_SPACING_NORMALIZED_Y;
+    const nearPackRows = Math.min(rowDepths, 1.6);
+    const farRows = Math.max(0, rowDepths - 1.6);
+    const visualDepthPx = nearPackRows * ROW_CENTER_SPACING + farRows * ROW_CENTER_SPACING * 1.85;
+
+    return Math.max(
+      VISUAL_OFF_FRONT_NORMALIZED_Y,
+      Math.min(frontCenterNormalizedY, frontCenterNormalizedY - visualDepthPx / BELT_HEIGHT),
+    );
   }
 
   private updateHud(force: boolean): void {

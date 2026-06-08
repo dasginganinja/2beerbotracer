@@ -47,7 +47,10 @@ FPS: 60
 - Uses a deeper perspective treadmill view with a long belt, tapered rails, stronger distance scaling, and cars with visible front/nose profiles.
 - Uses larger cars on a narrower belt so the pack reads as side-by-side cars instead of strict lanes.
 - Runs a multi-pass simulation step: belt/incline/wheel forces, global pack/seam pressure, repeated contact resolution, rail/front-wall enforcement, then event/status derivation.
+- Runs physics at 50ms ticks and interpolates in the Pixi scene so recovery, yaw, and collisions do not visibly alias at OBS frame rate.
 - Uses an increased impact-response tuning path so hard contacts transfer force and chain through the pack in a few seconds instead of slowly over many frames.
+- Keeps knocked-out cars moving up with the belt after elimination instead of freezing on the treadmill surface.
+- Maps simulation depth to the perspective belt separately from raw normalized Y so the first row renders on the yellow line and the second row stays tight behind it.
 - Allows rail-side stacks up to four cars per side in high side-hang races.
 - Supports `trackAngleDeg` as a tuning knob for how much the slight treadmill incline helps cars resist early slide-back. Default is `6`.
 - Ramps belt speed from 0mph to a 2mph-equivalent start speed, holds that through 60 seconds, then ramps toward a 10mph-equivalent speed.

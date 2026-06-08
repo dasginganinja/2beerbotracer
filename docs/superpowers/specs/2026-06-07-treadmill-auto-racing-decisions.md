@@ -110,6 +110,20 @@ Refinement: Contact handling must include positional separation and active-belt 
 
 Second refinement: Starting row spacing must be based on the rear car nose meeting the front car tail, not half-car center spacing. Bumper compression is capped to a few simulated pixels because metal bumpers do not squash deeply.
 
+Third refinement: Simulation depth and rendered belt depth are not the same coordinate system. The scene maps the simulated front-row hold point to the yellow line and keeps the second row visually tight behind it, while still using a deeper perspective scale for cars that slide up the long treadmill.
+
+### Use smaller physics ticks for recovery and rotation
+
+Decision: The simulation now advances at 50ms physics ticks while the Pixi scene interpolates rendered frames.
+
+Reason: A 100ms tick made recovering cars and yaw changes feel twitchy but slow, because visible state changes arrived in coarse samples. The smaller tick keeps collisions, recovery, and sliding motion more continuous without making the browser own per-frame authority.
+
+### Let eliminated cars keep riding the belt
+
+Decision: Knocked-out and self-spun cars continue sliding up-screen with belt velocity after elimination. Side-hung cars remain pinned to their rail stack.
+
+Reason: Dead cars should not freeze on the active treadmill surface. Once their wheels stop contributing, the belt carries them toward the far end unless they are explicitly wedged on the side.
+
 ### Expose physics knobs in-scene
 
 Decision: The POC scene shows a compact physics debug panel with current belt speed, startup ramp, track angle, angle assist, rolling resistance, yaw wheel-speed loss/recovery, bumper compression, contact bounce, seam shift, trait variance, early-upset chance, impact speed, chain spread, active/sliding/eliminated counts, average wheel speed, and average traction.

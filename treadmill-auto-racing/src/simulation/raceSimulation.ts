@@ -168,9 +168,10 @@ const SIM_START_Y = [SIM_START_HOLD_Y, SIM_START_HOLD_Y - SIM_ROW_SPACING] as co
 const SIM_LEFT_SAFE_X = 62;
 const SIM_RIGHT_SAFE_X = SIM_WIDTH - 62;
 const SIM_SIDE_RAIL_PADDING = 24;
-const SIM_OFF_FRONT_Y = -36;
-const SIM_STEP_MS = 100;
+const SIM_OFF_FRONT_Y = -150;
+const SIM_STEP_MS = 50;
 const SIM_STEP_SECONDS = SIM_STEP_MS / 1000;
+const SIM_STEP_CHANCE_SCALE = SIM_STEP_MS / 100;
 const MPH_TO_PX_PER_SEC = 36;
 const BELT_START_MPH = 2;
 const BELT_FULL_MPH = 10;
@@ -365,7 +366,11 @@ export function simulateRace({ seed, racers, durationMs, trackAngleDeg = 6 }: Si
     }
 
     for (const car of cars) {
-      if (car.eliminated || car.status === "side-hung") {
+      if (car.eliminated) {
+        advanceEliminatedCar(car, timeMs);
+        continue;
+      }
+      if (car.status === "side-hung") {
         continue;
       }
 
@@ -380,6 +385,17 @@ export function simulateRace({ seed, racers, durationMs, trackAngleDeg = 6 }: Si
       );
       const usableRollingGrip = clamp(car.wheelSpeed * car.traction * yawEfficiency * 1.25, 0.12, 1);
       const holdCorrection = rawHoldCorrection * usableRollingGrip;
+      const slidingGrip = car.status === "sliding-up" ? clamp(usableRollingGrip, 0.05, 0.65) : 1;
+      const beltSlipVelocity = car.status === "sliding-up" ? beltVelocity * (1.12 - slidingGrip * 0.32) : beltVelocity;
+      const effectiveAngleAssist =
+        car.status === "sliding-up" ? trackAngleAssistVelocity * clamp(slidingGrip * 0.75, 0.08, 0.42) : trackAngleAssistVelocity;
+      const effectiveHoldCorrection =
+        car.status === "sliding-up"
+          ? holdCorrection * clamp(slidingGrip - 0.16, 0, 0.38)
+          : car.status === "recovering"
+            ? holdCorrection * 1.42
+            : holdCorrection;
+      const effectiveDriveVelocity = car.status === "recovering" ? driveVelocity * 1.28 : driveVelocity;
       const seamPhase = timeMs / 2_700 + seed * 0.01;
       const railBias = car.racer.column <= 2 ? -10 : car.racer.column >= 12 ? 10 : 0;
       const traitWobblePhase = timeMs / (1_900 + car.racer.slot * 37) + hashString(car.racer.id) * 0.0001;
@@ -394,14 +410,16 @@ export function simulateRace({ seed, racers, durationMs, trackAngleDeg = 6 }: Si
       const lateralCenter = car.racer.column * SIM_SLOT_WIDTH + SIM_SLOT_WIDTH / 2 + packDrift;
       const lateralVelocity = clamp((lateralCenter - car.x) * 0.22 * car.stability, -MAX_LATERAL_SPEED_PX_PER_SEC, MAX_LATERAL_SPEED_PX_PER_SEC);
       const jitterVelocity = (random() - 0.5) * 5;
-      const targetVy = beltVelocity + trackAngleAssistVelocity + driveVelocity + holdCorrection;
+      const targetVy = beltSlipVelocity + effectiveAngleAssist + effectiveDriveVelocity + effectiveHoldCorrection;
       const targetVx = lateralVelocity + jitterVelocity + Math.sin(yawError) * driveVelocity * 0.12;
 
-      car.vy += (targetVy - car.vy) * 0.2;
-      car.vx += (targetVx - car.vx) * 0.18;
-      car.angularVelocity += -yawError * car.stability * 0.45 * SIM_STEP_SECONDS;
+      const velocityResponse = car.status === "recovering" ? 0.3 : car.status === "sliding-up" ? 0.26 : 0.19;
+      car.vy += (targetVy - car.vy) * velocityResponse;
+      car.vx += (targetVx - car.vx) * 0.16;
+      const yawSpring = car.status === "recovering" ? 1.18 : car.status === "sliding-up" ? 0.72 : 0.48;
+      car.angularVelocity += -yawError * car.stability * yawSpring * SIM_STEP_SECONDS;
       car.angularVelocity += traitWobble * 0.018 * SIM_STEP_SECONDS;
-      car.angularVelocity *= 0.84;
+      car.angularVelocity *= car.status === "recovering" ? 0.84 : 0.91;
       const yawLoss = Math.abs(yawError) * tuning.yawWheelLossPerSecond * car.traits.yawLoss * SIM_STEP_SECONDS;
       const rollingLoss = tuning.rollingResistancePerSecond * car.traits.rollingResistance * SIM_STEP_SECONDS;
       car.wheelSpeed = clamp(car.wheelSpeed - yawLoss - rollingLoss, 0.02, 1.35);
@@ -429,7 +447,7 @@ export function simulateRace({ seed, racers, durationMs, trackAngleDeg = 6 }: Si
         car.vy -= (14 + car.traits.wobble * 5) * SIM_STEP_SECONDS;
         car.status = "sliding-up";
       }
-      if (Math.abs(yawError) > 0.42 && random() < 0.002 + Math.abs(yawError) * 0.002) {
+      if (Math.abs(yawError) > 0.42 && random() < (0.002 + Math.abs(yawError) * 0.002) * SIM_STEP_CHANCE_SCALE) {
         car.wheelSpeed = clamp(car.wheelSpeed - 0.18 - random() * 0.18, 0.02, 1.35);
         if (car.wheelSpeed < 0.18) {
           car.status = "sliding-up";
@@ -464,12 +482,12 @@ export function simulateRace({ seed, racers, durationMs, trackAngleDeg = 6 }: Si
       const maxYaw = car.status === "spinning" || car.status === "self-spun" ? 1.05 : ACTIVE_YAW_LIMIT_RAD;
       car.angle = Math.PI / 2 + clamp(normalizeAngle(car.angle - Math.PI / 2), -maxYaw, maxYaw);
 
-      const tractionShock = random() < (1 - car.stability) * 0.005 * car.traits.wobble ? 0.07 : 0;
+      const tractionShock = random() < (1 - car.stability) * 0.005 * car.traits.wobble * SIM_STEP_CHANCE_SCALE ? 0.07 : 0;
       if (tractionShock > 0) {
         car.traction = clamp(car.traction - tractionShock, 0.08, 1);
         car.status = "wobbling";
         car.angularVelocity += (random() - 0.5) * 0.28;
-      } else if (car.status === "wobbling" && random() < car.stability * 0.12) {
+      } else if (car.status === "wobbling" && random() < car.stability * 0.12 * SIM_STEP_CHANCE_SCALE) {
         car.status = "recovering";
         car.traction = clamp(car.traction + 0.14, 0, 1);
       } else if ((car.status === "recovering" || car.status === "wobbling") && car.traction > 0.45) {
@@ -487,7 +505,7 @@ export function simulateRace({ seed, racers, durationMs, trackAngleDeg = 6 }: Si
       if (car.y < SIM_START_HOLD_Y - 112 && car.vy < -58 && car.status === "running") {
         car.status = "sliding-up";
       }
-      if (car.status === "sliding-up" && random() < car.stability * Math.max(car.traction, 0.2) * 0.08) {
+      if (car.status === "sliding-up" && random() < car.stability * Math.max(car.traction, 0.2) * 0.08 * SIM_STEP_CHANCE_SCALE) {
         car.status = "recovering";
         car.wheelSpeed = clamp(car.wheelSpeed + 0.16, 0, 1.35);
         car.traction = clamp(car.traction + 0.22, 0, 1);
@@ -873,8 +891,8 @@ function resolveContact(
   a.wheelSpeed = clamp(a.wheelSpeed - impulse * 0.052, 0.08, 1.35);
   b.wheelSpeed = clamp(b.wheelSpeed - impulse * 0.052, 0.08, 1.35);
 
-  a.pileupContacts += impulse > 0.62 ? 1.45 : 0.72;
-  b.pileupContacts += impulse > 0.62 ? 1.45 : 0.72;
+  a.pileupContacts += (impulse > 0.62 ? 1.45 : 0.72) * SIM_STEP_CHANCE_SCALE;
+  b.pileupContacts += (impulse > 0.62 ? 1.45 : 0.72) * SIM_STEP_CHANCE_SCALE;
   a.status = timeMs > 6_000 && a.pileupContacts > tuning.chainReactionThreshold && impulse > 0.62 ? "pileup" : "wobbling";
   b.status = timeMs > 6_000 && b.pileupContacts > tuning.chainReactionThreshold && impulse > 0.62 ? "pileup" : "wobbling";
 
@@ -886,7 +904,7 @@ function resolveContact(
     Math.abs(front.racer.column - rear.racer.column) <= 1 &&
     impulse > 0.52 &&
     relativeSpeed > 12 &&
-    random() < 0.16 + impulse * 0.22
+    random() < (0.16 + impulse * 0.22) * SIM_STEP_CHANCE_SCALE
   ) {
     rear.traction = clamp(rear.traction - 0.14, 0.04, 1);
     rear.wheelSpeed = clamp(rear.wheelSpeed - 0.1, 0.08, 1.35);
@@ -1112,6 +1130,22 @@ function separateCars(
     a.y -= directionY * correction;
     b.y += directionY * correction;
   }
+}
+
+function advanceEliminatedCar(car: CarRuntime, timeMs: number): void {
+  if (car.status === "side-hung") {
+    return;
+  }
+
+  const beltVelocity = -getBeltSpeedPxPerSec(timeMs);
+  const slideTarget = beltVelocity * 1.18 - 18;
+  car.vy += (slideTarget - car.vy) * 0.24;
+  car.vx *= 0.92;
+  car.angularVelocity *= 0.94;
+  car.x += car.vx * SIM_STEP_SECONDS;
+  car.y += car.vy * SIM_STEP_SECONDS;
+  car.angle += car.angularVelocity * SIM_STEP_SECONDS;
+  car.y = Math.max(car.y, SIM_OFF_FRONT_Y - 95);
 }
 
 function enforceActiveBounds(car: CarRuntime): void {
