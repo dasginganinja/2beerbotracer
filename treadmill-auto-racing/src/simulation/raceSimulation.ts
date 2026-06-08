@@ -90,6 +90,9 @@ export type PhysicsTuning = {
   seamShiftPx: number;
   carTraitVariance: number;
   earlyUpsetChance: number;
+  collisionImpulseMultiplier: number;
+  chainSpreadChance: number;
+  chainReactionThreshold: number;
 };
 
 export type StableCarTraits = {
@@ -195,6 +198,9 @@ const DEFAULT_PHYSICS_TUNING_BASE = {
   seamShiftPx: 18,
   carTraitVariance: 1,
   earlyUpsetChance: 0.26,
+  collisionImpulseMultiplier: 1.38,
+  chainSpreadChance: 0.48,
+  chainReactionThreshold: 4.2,
 } as const;
 
 const DEMO_NAMES = [
@@ -492,7 +498,7 @@ export function simulateRace({ seed, racers, durationMs, trackAngleDeg = 6 }: Si
     for (let pass = 0; pass < 2; pass += 1) {
       for (let i = 0; i < cars.length; i += 1) {
         for (let j = i + 1; j < cars.length; j += 1) {
-          resolveContact(cars[i], cars[j], timeMs, random, timeline);
+          resolveContact(cars[i], cars[j], timeMs, random, timeline, tuning);
         }
       }
       settleContacts(cars);
@@ -550,7 +556,7 @@ export function simulateRace({ seed, racers, durationMs, trackAngleDeg = 6 }: Si
           car.lastChaosType = car.status === "pileup" ? "chain-reaction" : "knockout";
           car.vy -= 36;
           pushChaos(timeline, car, timeMs, car.lastChaosType);
-          disturbRearPack(cars, car, timeMs, random, timeline);
+          disturbRearPack(cars, car, timeMs, random, timeline, tuning);
         }
       }
 
@@ -614,6 +620,9 @@ export function simulateRace({ seed, racers, durationMs, trackAngleDeg = 6 }: Si
     survivor.eliminated = false;
     survivor.y = Math.max(survivor.y, SIM_START_HOLD_Y - 18);
     survivor.vy = Math.max(survivor.vy, 0);
+    survivor.wheelSpeed = Math.max(survivor.wheelSpeed, 0.62);
+    survivor.traction = Math.max(survivor.traction, 0.62);
+    survivor.pileupContacts = 0;
     survivor.angle = Math.PI / 2 + clamp(normalizeAngle(survivor.angle - Math.PI / 2), -0.28, 0.28);
   }
 
@@ -737,7 +746,7 @@ function deriveFrameStatus(car: CarRuntime): CarStatus {
     return car.status;
   }
   const yawError = Math.abs(normalizeAngle(car.angle - Math.PI / 2));
-  if (car.pileupContacts > 5.5) {
+  if (car.pileupContacts > DEFAULT_PHYSICS_TUNING_BASE.chainReactionThreshold) {
     return "pileup";
   }
   if (car.y < SIM_START_HOLD_Y - 90 || car.wheelSpeed < 0.18 || yawError > 0.58) {
@@ -758,6 +767,7 @@ function resolveContact(
   timeMs: number,
   random: () => number,
   timeline: RaceTimelineEvent[],
+  tuning: PhysicsTuning,
 ): void {
   if (a.eliminated || b.eliminated || a.status === "side-hung" || b.status === "side-hung") {
     return;
@@ -801,7 +811,7 @@ function resolveContact(
     getNoseY(rear) <= getTailY(front) + SIM_MAX_BUMPER_COMPRESSION &&
     relativeSpeed < 26 &&
     relativeYaw < 0.24;
-  const hardContact = impulse > 0.72 && (relativeSpeed > 40 || relativeYaw > 0.42 || lateralCompression);
+  const hardContact = impulse > 0.62 && (relativeSpeed > 30 || relativeYaw > 0.34 || lateralCompression);
   const canSeparateX =
     Math.abs(dx) > 0.001 &&
     (a.racer.row === b.racer.row || Math.abs(dy) < SIM_ROW_SPACING * 0.62);
@@ -810,7 +820,7 @@ function resolveContact(
     (a.racer.row !== b.racer.row || Math.abs(dx) < minX * 0.35);
   const separateOnX = canSeparateX && (!canSeparateY || overlapX < overlapY * 0.9);
 
-  separateCars(a, b, separateOnX, separateOnX ? overlapX : overlapY, directionX, directionY, hardContact ? 0.82 : 0.46);
+  separateCars(a, b, separateOnX, separateOnX ? overlapX : overlapY, directionX, directionY, hardContact ? 0.94 : 0.58);
   enforceActiveBounds(a);
   enforceActiveBounds(b);
 
@@ -826,47 +836,47 @@ function resolveContact(
   }
 
   if (!hardContact) {
-    const softImpulse = impulse * 1.8;
+    const softImpulse = impulse * 2.35 * tuning.collisionImpulseMultiplier;
     a.vx -= directionX * softImpulse / a.mass;
     b.vx += directionX * softImpulse / b.mass;
     a.vy -= directionY * softImpulse * 0.45 / a.mass;
     b.vy += directionY * softImpulse * 0.45 / b.mass;
-    if (impulse > 0.58 && timeMs - a.lastChaosAtMs > 3_000 && timeMs - b.lastChaosAtMs > 3_000) {
+    if (impulse > 0.54 && timeMs - a.lastChaosAtMs > 1_800 && timeMs - b.lastChaosAtMs > 1_800) {
       pushChaos(timeline, impulse > 0.68 ? a : b, timeMs, "bump");
     }
     return;
   }
 
   if (timeMs < 6_000) {
-    const earlyImpulse = impulse * 3.2;
+    const earlyImpulse = impulse * 4.1 * tuning.collisionImpulseMultiplier;
     a.vx -= directionX * earlyImpulse / a.mass;
     b.vx += directionX * earlyImpulse / b.mass;
     a.vy -= directionY * earlyImpulse * 0.55 / a.mass;
     b.vy += directionY * earlyImpulse * 0.55 / b.mass;
     a.angularVelocity -= directionX * impulse * 0.06;
     b.angularVelocity += directionX * impulse * 0.06;
-    if (impulse > 0.78 && timeMs - a.lastChaosAtMs > 3_000 && timeMs - b.lastChaosAtMs > 3_000) {
+    if (impulse > 0.7 && timeMs - a.lastChaosAtMs > 1_800 && timeMs - b.lastChaosAtMs > 1_800) {
       pushChaos(timeline, impulse > 0.84 ? a : b, timeMs, "bump");
     }
     return;
   }
 
-  a.vx -= directionX * impulse * 12 / a.mass;
-  b.vx += directionX * impulse * 12 / b.mass;
-  a.vy -= directionY * impulse * 9 / a.mass;
-  b.vy += directionY * impulse * 9 / b.mass;
-  a.angularVelocity -= directionX * impulse * 0.34;
-  b.angularVelocity += directionX * impulse * 0.34;
+  a.vx -= directionX * impulse * 15 * tuning.collisionImpulseMultiplier / a.mass;
+  b.vx += directionX * impulse * 15 * tuning.collisionImpulseMultiplier / b.mass;
+  a.vy -= directionY * impulse * 12 * tuning.collisionImpulseMultiplier / a.mass;
+  b.vy += directionY * impulse * 12 * tuning.collisionImpulseMultiplier / b.mass;
+  a.angularVelocity -= directionX * impulse * 0.46 * tuning.collisionImpulseMultiplier;
+  b.angularVelocity += directionX * impulse * 0.46 * tuning.collisionImpulseMultiplier;
 
-  a.traction = clamp(a.traction - impulse * (0.025 + random() * 0.045), 0.05, 1);
-  b.traction = clamp(b.traction - impulse * (0.025 + random() * 0.045), 0.05, 1);
-  a.wheelSpeed = clamp(a.wheelSpeed - impulse * 0.035, 0.1, 1.35);
-  b.wheelSpeed = clamp(b.wheelSpeed - impulse * 0.035, 0.1, 1.35);
+  a.traction = clamp(a.traction - impulse * (0.035 + random() * 0.06), 0.05, 1);
+  b.traction = clamp(b.traction - impulse * (0.035 + random() * 0.06), 0.05, 1);
+  a.wheelSpeed = clamp(a.wheelSpeed - impulse * 0.052, 0.08, 1.35);
+  b.wheelSpeed = clamp(b.wheelSpeed - impulse * 0.052, 0.08, 1.35);
 
-  a.pileupContacts += impulse > 0.72 ? 1 : 0.45;
-  b.pileupContacts += impulse > 0.72 ? 1 : 0.45;
-  a.status = timeMs > 6_000 && a.pileupContacts > 6 && impulse > 0.72 ? "pileup" : "wobbling";
-  b.status = timeMs > 6_000 && b.pileupContacts > 6 && impulse > 0.72 ? "pileup" : "wobbling";
+  a.pileupContacts += impulse > 0.62 ? 1.45 : 0.72;
+  b.pileupContacts += impulse > 0.62 ? 1.45 : 0.72;
+  a.status = timeMs > 6_000 && a.pileupContacts > tuning.chainReactionThreshold && impulse > 0.62 ? "pileup" : "wobbling";
+  b.status = timeMs > 6_000 && b.pileupContacts > tuning.chainReactionThreshold && impulse > 0.62 ? "pileup" : "wobbling";
 
   if (
     front &&
@@ -874,18 +884,17 @@ function resolveContact(
     timeMs > 6_000 &&
     rear.y < SIM_START_HOLD_Y - SIM_ROW_SPACING + 16 &&
     Math.abs(front.racer.column - rear.racer.column) <= 1 &&
-    impulse > 0.66 &&
-    relativeSpeed > 16 &&
-    random() < 0.08 + impulse * 0.14
+    impulse > 0.52 &&
+    relativeSpeed > 12 &&
+    random() < 0.16 + impulse * 0.22
   ) {
     rear.traction = clamp(rear.traction - 0.14, 0.04, 1);
     rear.wheelSpeed = clamp(rear.wheelSpeed - 0.1, 0.08, 1.35);
     rear.status = "sliding-up";
-    rear.vy -= 18 + impulse * 14;
+    rear.vy -= 28 + impulse * 24 * tuning.collisionImpulseMultiplier;
     pushChaos(timeline, rear, timeMs, "chain-reaction");
-  } else if (impulse > 0.42 && timeMs - a.lastChaosAtMs > 2200 && timeMs - b.lastChaosAtMs > 2200) {
-    const chaosType = timeMs > 6_000 && impulse > 0.72 ? "chain-reaction" : "bump";
-    pushChaos(timeline, impulse > 0.72 ? a : b, timeMs, chaosType);
+  } else if (impulse > 0.38 && timeMs - a.lastChaosAtMs > 1_400 && timeMs - b.lastChaosAtMs > 1_400) {
+    pushChaos(timeline, impulse > 0.72 ? a : b, timeMs, "bump");
   }
 }
 
@@ -1044,6 +1053,7 @@ function disturbRearPack(
   timeMs: number,
   random: () => number,
   timeline: RaceTimelineEvent[],
+  tuning: PhysicsTuning,
 ): void {
   for (const candidate of cars) {
     if (
@@ -1054,17 +1064,29 @@ function disturbRearPack(
       continue;
     }
 
-    const severity = 0.32 + random() * 0.28;
+    const severity = 0.42 + random() * 0.42;
     candidate.traction = clamp(candidate.traction - severity * candidate.traits.yawLoss, 0.04, 1);
     candidate.wheelSpeed = clamp(candidate.wheelSpeed - severity * candidate.traits.rollingResistance, 0.02, 1.35);
     candidate.angularVelocity += (random() - 0.5) * (0.28 + candidate.traits.wobble * 0.14);
-    candidate.vy -= 30 + severity * 42;
-    candidate.pileupContacts += 1.2;
+    candidate.vy -= 48 + severity * 62 * tuning.collisionImpulseMultiplier;
+    candidate.pileupContacts += 1.8 + severity;
     candidate.status = "sliding-up";
-    candidate.boggedUntilMs = Math.max(candidate.boggedUntilMs, timeMs + 2_800 + severity * 2_000);
+    candidate.boggedUntilMs = Math.max(candidate.boggedUntilMs, timeMs + 2_200 + severity * 2_200);
 
-    if (random() < 0.3 && timeMs - candidate.lastChaosAtMs > 2_000) {
-      pushChaos(timeline, candidate, timeMs, "chain-reaction");
+    if (candidate.pileupContacts > tuning.chainReactionThreshold && random() < tuning.chainSpreadChance) {
+      const stillRunning = cars.filter((car) => !car.eliminated).length;
+      if (stillRunning > 1) {
+        candidate.status = "pileup";
+        candidate.eliminated = true;
+        candidate.eliminatedAtMs = timeMs + 400;
+        candidate.lastChaosType = "chain-reaction";
+        pushChaos(timeline, candidate, candidate.eliminatedAtMs, "chain-reaction");
+        continue;
+      }
+    }
+
+    if (random() < tuning.chainSpreadChance && timeMs - candidate.lastChaosAtMs > 1_200) {
+      pushChaos(timeline, candidate, timeMs, "bump");
     }
   }
 }

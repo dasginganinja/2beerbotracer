@@ -47,11 +47,12 @@ FPS: 60
 - Uses a deeper perspective treadmill view with a long belt, tapered rails, stronger distance scaling, and cars with visible front/nose profiles.
 - Uses larger cars on a narrower belt so the pack reads as side-by-side cars instead of strict lanes.
 - Runs a multi-pass simulation step: belt/incline/wheel forces, global pack/seam pressure, repeated contact resolution, rail/front-wall enforcement, then event/status derivation.
+- Uses an increased impact-response tuning path so hard contacts transfer force and chain through the pack in a few seconds instead of slowly over many frames.
 - Allows rail-side stacks up to four cars per side in high side-hang races.
 - Supports `trackAngleDeg` as a tuning knob for how much the slight treadmill incline helps cars resist early slide-back. Default is `6`.
 - Ramps belt speed from 0mph to a 2mph-equivalent start speed, holds that through 60 seconds, then ramps toward a 10mph-equivalent speed.
 - Gives each car stable rolling traits keyed to its racer/slot: wheel speed, traction, stability, wobble, rolling resistance, yaw loss, and recovery.
-- Shows a physics debug panel with belt speed, startup ramp, track angle, rolling resistance, yaw wheel-speed loss/recovery, bumper compression, seam shift, trait variance, early-upset chance, active/sliding/eliminated counts, average wheel speed, and average traction.
+- Shows a physics debug panel with belt speed, startup ramp, track angle, rolling resistance, yaw wheel-speed loss/recovery, bumper compression, seam shift, trait variance, early-upset chance, impact speed, chain spread, active/sliding/eliminated counts, average wheel speed, and average traction.
 - Uses code-native PixiJS placeholder art so no assets are required.
 - Includes a `/control` placeholder documenting the future operator surface.
 

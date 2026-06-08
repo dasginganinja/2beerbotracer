@@ -137,12 +137,13 @@ Race:
 - The treadmill seam creates small recurring global pack shifts, with minor local side-to-side variation inside each row.
 - The belt speed should feel quick; stable cars hold position through wheel drive, incline assist, and compression, while unstable cars slide back fast once they lose alignment.
 - Incidents can chain through nearby cars, producing small pileups or large group knockouts.
+- Hard contacts use higher impulse transfer and faster pileup-pressure accumulation so large collisions resolve over a few seconds, not a long slow sequence of frames.
 - Side-gap hangs are rare probability events, not a normal outcome every race.
 - Side rail stacks can show up to four cars on a side. High side-hang races can force a small stack so the rail behavior is visible.
 - Demo simulation now uses a deterministic fixed-step model with per-car wheel speed, traction, stability, velocity, angular velocity, and contact impulses.
 - Car status labels are derived from continuous fields where possible. `running`, `wobbling`, and `sliding-up` are broadcast labels, while active/eliminated/side-hung/pileup flags carry the stronger event meaning.
 - The model does not yet simulate individual wheel contact patches or metal material properties. It approximates those with stable per-car traits, low rolling resistance, yaw-based wheel-speed loss, traction recovery, startup load, limited bumper compression, and damped contact response.
-- The debug panel exposes the current knobs: belt speed, startup ramp, track angle, angle assist, rolling loss, yaw wheel loss/recovery, bumper compression, contact bounce, seam shift, trait variance, early-upset chance, active/sliding/eliminated counts, average wheel speed, and average traction.
+- The debug panel exposes the current knobs: belt speed, startup ramp, track angle, angle assist, rolling loss, yaw wheel loss/recovery, bumper compression, contact bounce, seam shift, trait variance, early-upset chance, impact speed, chain spread, active/sliding/eliminated counts, average wheel speed, and average traction.
 - Resting front/rear bumper proximity is not a damaging collision; close aligned cars damp together until a real shift, yaw, or slide creates a hard hit.
 - Row two begins in light nose-to-tail compression with row one. The rear car nose compresses against the front car tail; the front car nose compresses against the yellow-line/front barrier.
 - Contacts must also correct position, not only velocity. Packed cars can compress, but active cars should not visually stack inside each other or escape the active belt boundaries.

@@ -40,6 +40,8 @@ Reason: The real race behavior comes from cars losing or recovering momentum whi
 
 Refinement: The loop now runs in multiple passes: force integration, global pack/seam pressure, repeated contact resolution, rail/front-wall enforcement, then event/status derivation. This is closer to a fluid-like pack simulation without committing to a full rigid-body engine yet.
 
+Second refinement: Collision response should not feel slow-motion. Hard contacts now engage at lower thresholds, transfer more velocity/angular force, accumulate pileup pressure faster, and let disturbed rear-pack cars resolve into chain eliminations within a few seconds.
+
 ### Derive car statuses from physics
 
 Decision: Treat car statuses as broadcast/event labels derived from continuous motion fields where possible, not as the primary finite-state machine for every physical change.
@@ -110,7 +112,7 @@ Second refinement: Starting row spacing must be based on the rear car nose meeti
 
 ### Expose physics knobs in-scene
 
-Decision: The POC scene shows a compact physics debug panel with current belt speed, startup ramp, track angle, angle assist, rolling resistance, yaw wheel-speed loss/recovery, bumper compression, contact bounce, seam shift, trait variance, early-upset chance, active/sliding/eliminated counts, average wheel speed, and average traction.
+Decision: The POC scene shows a compact physics debug panel with current belt speed, startup ramp, track angle, angle assist, rolling resistance, yaw wheel-speed loss/recovery, bumper compression, contact bounce, seam shift, trait variance, early-upset chance, impact speed, chain spread, active/sliding/eliminated counts, average wheel speed, and average traction.
 
 Reason: The physical model is still an approximation. Showing the knobs makes tuning conversations concrete and prevents hidden assumptions about friction, wheel speed, or collision surfaces.
 

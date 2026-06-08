@@ -250,7 +250,7 @@ describe("race simulation", () => {
     expect(atNinetySeconds?.beltSpeedMph).toBeCloseTo(6);
   });
 
-  it("allows occasional real incidents during the 2mph hold without making every seed explode", () => {
+  it("allows early 2mph damage without making every seed explode", () => {
     const races = Array.from({ length: 18 }, (_, index) =>
       simulateRace({
         seed: 4100 + index,
@@ -259,12 +259,34 @@ describe("race simulation", () => {
         trackAngleDeg: 6,
       }),
     );
-    const racesWithEarlyIncidents = races.filter((race) =>
-      race.timeline.some((event) => event.timeMs < 60_000 && event.chaosType !== "bump"),
+    const eliminatedAtSixty = races.map(
+      (race) => race.frames.find((frame) => frame.timeMs === 60_000)?.metrics.eliminated ?? 0,
     );
+    const racesWithDamage = eliminatedAtSixty.filter((count) => count > 0);
+    const explodedRaces = eliminatedAtSixty.filter((count) => count > 8);
 
-    expect(racesWithEarlyIncidents.length).toBeGreaterThanOrEqual(3);
-    expect(racesWithEarlyIncidents.length).toBeLessThanOrEqual(12);
+    expect(racesWithDamage.length).toBeGreaterThanOrEqual(12);
+    expect(explodedRaces.length).toBeLessThanOrEqual(3);
+    expect(Math.max(...eliminatedAtSixty)).toBeLessThanOrEqual(14);
+  });
+
+  it("resolves big chain collisions within a few seconds instead of many frames later", () => {
+    const race = simulateRace({
+      seed: 4101,
+      racers: createDemoRace(4101).racers,
+      durationMs: 120_000,
+      trackAngleDeg: 6,
+    });
+    const firstChain = race.timeline.find((event) => event.chaosType === "chain-reaction");
+    const chainStartFrame = race.frames.find((frame) => frame.timeMs === firstChain?.timeMs);
+    const followThroughFrame = race.frames.find((frame) => frame.timeMs === (firstChain?.timeMs ?? 0) + 4_000);
+
+    expect(firstChain).toBeDefined();
+    expect(chainStartFrame).toBeDefined();
+    expect(followThroughFrame).toBeDefined();
+    expect((chainStartFrame?.metrics.eliminated ?? 0) + 3).toBeLessThanOrEqual(
+      followThroughFrame?.metrics.eliminated ?? 0,
+    );
   });
 
   it("keeps side-gap hangs uncommon across seeded demo races", () => {

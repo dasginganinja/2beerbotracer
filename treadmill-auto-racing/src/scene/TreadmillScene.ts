@@ -58,6 +58,9 @@ const DEFAULT_PHYSICS_TUNING: PhysicsTuning = {
   seamShiftPx: 18,
   carTraitVariance: 1,
   earlyUpsetChance: 0.26,
+  collisionImpulseMultiplier: 1.38,
+  chainSpreadChance: 0.48,
+  chainReactionThreshold: 4.2,
 };
 
 type CarView = {
@@ -459,7 +462,7 @@ export class TreadmillScene {
 
   private createDebugPanel(): void {
     const panel = new Graphics()
-      .roundRect(18, 612, 430, 435, 12)
+      .roundRect(18, 585, 430, 462, 12)
       .fill({ color: 0x05070a, alpha: 0.76 })
       .stroke({ width: 2, color: 0x596273, alpha: 0.75 });
 
@@ -467,12 +470,12 @@ export class TreadmillScene {
       text: "",
       style: {
         fontFamily: "Consolas, monospace",
-        fontSize: 20,
+        fontSize: 18,
         fill: 0xd8dde8,
-        lineHeight: 25,
+        lineHeight: 22,
       },
     });
-    this.debugText.position.set(36, 630);
+    this.debugText.position.set(36, 602);
     this.debugLayer.addChild(panel, this.debugText);
   }
 
@@ -684,6 +687,8 @@ export class TreadmillScene {
       `seam shift     ${tuning.seamShiftPx.toFixed(1)} px`,
       `trait variance ${tuning.carTraitVariance.toFixed(2)}`,
       `early upset    ${tuning.earlyUpsetChance.toFixed(2)}`,
+      `impact speed   ${tuning.collisionImpulseMultiplier.toFixed(2)}x`,
+      `chain spread   ${tuning.chainSpreadChance.toFixed(2)}`,
       `active         ${metrics.active}`,
       `sliding/wobble ${metrics.sliding}`,
       `eliminated     ${metrics.eliminated}`,
