@@ -9,6 +9,7 @@ import {
   createDemoRace,
   simulateRace,
   type DemoRace,
+  type PhysicsTuning,
   type RaceFrame,
   type RaceState,
   type Racer,
@@ -26,10 +27,31 @@ const BELT_HEIGHT = 520;
 const SLOT_COLUMNS = 15;
 const SLOT_WIDTH = BELT_WIDTH / SLOT_COLUMNS;
 const CAR_SCALE = 0.92;
-const ROW_CENTER_SPACING = 54;
-const CAR_NOSE_TO_CENTER = 54 * CAR_SCALE;
+const ROW_CENTER_SPACING = 105;
+const CAR_NOSE_TO_CENTER = 66 * CAR_SCALE;
 const CAR_BASE_ROTATION = Math.PI / 2;
 const DEFAULT_BELT_SPEED_MPH = 2;
+const DEFAULT_DEBUG_METRICS = {
+  active: 0,
+  sliding: 0,
+  eliminated: 0,
+  averageWheelSpeed: 0,
+  averageTraction: 0,
+};
+const DEFAULT_PHYSICS_TUNING: PhysicsTuning = {
+  beltStartMph: 2,
+  beltFullMph: 10,
+  beltHoldMs: 60_000,
+  beltRampMs: 60_000,
+  trackAngleDeg: 6,
+  trackAngleAssistPxPerSecPerDeg: 8,
+  rollingResistancePerSecond: 0.012,
+  yawWheelLossPerSecond: 0.22,
+  yawRecoverPerSecond: 0.08,
+  maxBumperCompressionPx: 5,
+  contactRestitution: 0.18,
+  seamShiftPx: 18,
+};
 
 type CarView = {
   racer: Racer;
@@ -51,6 +73,7 @@ export class TreadmillScene {
   private readonly carLayer = new Container({ sortableChildren: true });
   private readonly fxLayer = new Container();
   private readonly hudLayer = new Container();
+  private readonly debugLayer = new Container();
   private readonly resultsLayer = new Container();
   private readonly carViews = new Map<string, CarView>();
   private mode: "demo" | "local" | "hosted" = "demo";
@@ -64,6 +87,7 @@ export class TreadmillScene {
   private trackAngleDeg = 6;
   private lastHudKey = "";
   private lastLeaderboardKey = "";
+  private lastDebugKey = "";
   private calloutUntilMs = 0;
   private calloutText = "";
   private beltScroll = 0;
@@ -71,6 +95,7 @@ export class TreadmillScene {
   private phaseText!: Text;
   private promptText!: Text;
   private leaderboardText!: Text;
+  private debugText!: Text;
   private calloutBanner!: Container;
   private calloutLabel!: Text;
   private resultsText!: Text;
@@ -98,10 +123,11 @@ export class TreadmillScene {
 
     this.host.appendChild(this.app.canvas);
     this.app.stage.addChild(this.root);
-    this.root.addChild(this.trackLayer, this.carLayer, this.fxLayer, this.hudLayer, this.resultsLayer);
+    this.root.addChild(this.trackLayer, this.carLayer, this.fxLayer, this.hudLayer, this.debugLayer, this.resultsLayer);
 
     this.drawTrack();
     this.createHud();
+    this.createDebugPanel();
     this.setRacers(this.race.racers);
     this.updateHud(true);
 
@@ -356,6 +382,25 @@ export class TreadmillScene {
     );
   }
 
+  private createDebugPanel(): void {
+    const panel = new Graphics()
+      .roundRect(18, 742, 430, 305, 12)
+      .fill({ color: 0x05070a, alpha: 0.76 })
+      .stroke({ width: 2, color: 0x596273, alpha: 0.75 });
+
+    this.debugText = new Text({
+      text: "",
+      style: {
+        fontFamily: "Consolas, monospace",
+        fontSize: 20,
+        fill: 0xd8dde8,
+        lineHeight: 25,
+      },
+    });
+    this.debugText.position.set(36, 760);
+    this.debugLayer.addChild(panel, this.debugText);
+  }
+
   private setRacers(racers: Racer[]): void {
     this.carLayer.removeChildren();
     this.carViews.clear();
@@ -465,6 +510,12 @@ export class TreadmillScene {
     if (this.calloutBanner.visible && this.calloutLabel.text !== this.calloutText) {
       this.calloutLabel.text = this.calloutText;
     }
+
+    const debug = this.buildDebugPanel();
+    if (force || debug !== this.lastDebugKey) {
+      this.debugText.text = debug;
+      this.lastDebugKey = debug;
+    }
   }
 
   private getPhaseLabel(countdown: number): string {
@@ -504,6 +555,30 @@ export class TreadmillScene {
     return [header, ...rows].join("\n");
   }
 
+  private buildDebugPanel(): string {
+    const frame = this.state === "RACING" ? this.getInterpolatedFrame(this.raceElapsedMs) : undefined;
+    const metrics = frame?.metrics ?? DEFAULT_DEBUG_METRICS;
+    const tuning = this.getPhysicsTuning();
+
+    return [
+      "PHYSICS DEBUG",
+      `belt mph       ${this.getCurrentBeltSpeedMph().toFixed(1)}`,
+      `track angle    ${tuning.trackAngleDeg.toFixed(1)} deg`,
+      `angle assist   ${tuning.trackAngleAssistPxPerSecPerDeg.toFixed(1)} px/s/deg`,
+      `rolling loss   ${tuning.rollingResistancePerSecond.toFixed(3)} /s`,
+      `yaw wheel loss ${tuning.yawWheelLossPerSecond.toFixed(2)} /s`,
+      `yaw recovery   ${tuning.yawRecoverPerSecond.toFixed(2)} /s`,
+      `bumper crush   ${tuning.maxBumperCompressionPx.toFixed(1)} px`,
+      `contact bounce ${tuning.contactRestitution.toFixed(2)}`,
+      `seam shift     ${tuning.seamShiftPx.toFixed(1)} px`,
+      `active         ${metrics.active}`,
+      `sliding/wobble ${metrics.sliding}`,
+      `eliminated     ${metrics.eliminated}`,
+      `avg wheels     ${metrics.averageWheelSpeed.toFixed(2)}`,
+      `avg traction   ${metrics.averageTraction.toFixed(2)}`,
+    ].join("\n");
+  }
+
   private showResults(): void {
     if (!this.simulatedRace) {
       return;
@@ -537,7 +612,7 @@ export class TreadmillScene {
 
   private getInterpolatedFrame(timeMs: number): RaceFrame {
     if (!this.simulatedRace) {
-      return { timeMs, beltSpeedMph: DEFAULT_BELT_SPEED_MPH, cars: [] };
+      return { timeMs, beltSpeedMph: DEFAULT_BELT_SPEED_MPH, metrics: DEFAULT_DEBUG_METRICS, cars: [] };
     }
 
     const frames = this.simulatedRace.frames;
@@ -556,6 +631,17 @@ export class TreadmillScene {
     return {
       timeMs,
       beltSpeedMph: previous.beltSpeedMph + (next.beltSpeedMph - previous.beltSpeedMph) * t,
+      metrics: {
+        active: next.metrics.active,
+        sliding: next.metrics.sliding,
+        eliminated: next.metrics.eliminated,
+        averageWheelSpeed:
+          previous.metrics.averageWheelSpeed +
+          (next.metrics.averageWheelSpeed - previous.metrics.averageWheelSpeed) * t,
+        averageTraction:
+          previous.metrics.averageTraction +
+          (next.metrics.averageTraction - previous.metrics.averageTraction) * t,
+      },
       cars: previous.cars.map((car) => {
         const nextCar = next.cars.find((candidate) => candidate.racerId === car.racerId);
         return {
@@ -577,6 +663,10 @@ export class TreadmillScene {
       return DEFAULT_BELT_SPEED_MPH;
     }
     return this.getInterpolatedFrame(this.raceElapsedMs).beltSpeedMph;
+  }
+
+  private getPhysicsTuning(): PhysicsTuning {
+    return this.simulatedRace?.tuning ?? { ...DEFAULT_PHYSICS_TUNING, trackAngleDeg: this.trackAngleDeg };
   }
 
   private pulseCar(racerId: string): void {

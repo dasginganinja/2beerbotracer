@@ -55,7 +55,7 @@ Pixi rendering layers:
 - Survival board: live status ordering.
 - Callouts: chaos and announcer banners.
 - Results: podium and finish order.
-- Debug overlay: hidden by default, enabled with `?debug=1`.
+- Debug overlay: visible in the POC so tuning is reviewable on stream preview; later it can move behind `?debug=1`.
 
 State machine:
 
@@ -135,6 +135,8 @@ Race:
 - Incidents can chain through nearby cars, producing small pileups or large group knockouts.
 - Side-gap hangs are rare probability events, not a normal outcome every race.
 - Demo simulation now uses a deterministic fixed-step model with per-car wheel speed, traction, stability, velocity, angular velocity, and contact impulses.
+- The model does not yet simulate individual wheel contact patches or metal material properties. It approximates those with low rolling resistance, yaw-based wheel-speed loss, traction recovery, limited bumper compression, and damped contact response.
+- The debug panel exposes the current knobs: belt speed, track angle, angle assist, rolling loss, yaw wheel loss/recovery, bumper compression, contact bounce, seam shift, active/sliding/eliminated counts, average wheel speed, and average traction.
 - Resting front/rear bumper proximity is not a damaging collision; close aligned cars damp together until a real shift, yaw, or slide creates a hard hit.
 - Row two begins in light nose-to-tail compression with row one. The rear car nose compresses against the front car tail; the front car nose compresses against the yellow-line/front barrier.
 - Contacts must also correct position, not only velocity. Packed cars can compress, but active cars should not visually stack inside each other or escape the active belt boundaries.

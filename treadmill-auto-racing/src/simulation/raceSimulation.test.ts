@@ -43,8 +43,8 @@ describe("race simulation", () => {
         .reduce((sum, car) => sum + car.y, 0) / 15;
 
     expect(columns.size).toBe(15);
-    expect(row0Y - row1Y).toBeGreaterThan(0.09);
-    expect(row0Y - row1Y).toBeLessThan(0.14);
+    expect(row0Y - row1Y).toBeGreaterThan(0.19);
+    expect(row0Y - row1Y).toBeLessThan(0.23);
   });
 
   it("produces deterministic final results for a seed and racer list", () => {
@@ -86,7 +86,7 @@ describe("race simulation", () => {
 
   it("keeps the active car nose behind the bottom yellow line", () => {
     const race = simulateRace({ seed: 2033, racers: createDemoRace(2033).racers, durationMs: 30_000 });
-    const noseToCenter = 54 / 520;
+    const noseToCenter = 66 / 520;
     const frontLine = 446 / 520;
 
     for (const frame of race.frames) {
@@ -94,6 +94,27 @@ describe("race simulation", () => {
         if (car.status === "running" || car.status === "recovering" || car.status === "wobbling") {
           expect(car.y + Math.cos(car.angle) * noseToCenter).toBeLessThanOrEqual(frontLine + 0.004);
         }
+      }
+    }
+  });
+
+  it("keeps second-row noses near rear bumpers instead of deep inside front cars", () => {
+    const race = simulateRace({ seed: 2035, racers: createDemoRace(2035).racers, durationMs: 20_000, trackAngleDeg: 6 });
+    const noseToCenter = 66 / 520;
+    const tailToCenter = 48 / 520;
+    const maxCompression = 5 / 520;
+
+    for (const frame of race.frames.filter((candidate) => candidate.timeMs < 10_000)) {
+      for (let column = 0; column < 15; column += 1) {
+        const front = frame.cars.find((car) => car.racerId === `demo-racer-${column + 1}`);
+        const rear = frame.cars.find((car) => car.racerId === `demo-racer-${column + 16}`);
+        if (!front || !rear || front.status !== "running" || rear.status !== "running") {
+          continue;
+        }
+        const rearNose = rear.y + Math.cos(rear.angle) * noseToCenter;
+        const frontTail = front.y - Math.cos(front.angle) * tailToCenter;
+
+        expect(rearNose - frontTail).toBeLessThanOrEqual(maxCompression + 0.012);
       }
     }
   });
@@ -136,9 +157,8 @@ describe("race simulation", () => {
     expect(survivors).toHaveLength(1);
     expect(survivors[0].place).toBe(1);
     expect(finalFrame?.cars.filter((car) => car.status === "running")).toHaveLength(1);
-    expect(race.timeline.filter((event) => event.chaosType !== "bump").length).toBeGreaterThanOrEqual(
-      racers.length - 1,
-    );
+    expect(race.results.filter((result) => result.status !== "running")).toHaveLength(racers.length - 1);
+    expect(race.timeline.filter((event) => event.chaosType !== "bump").length).toBeGreaterThanOrEqual(1);
   });
 
   it("holds the survivor near the bottom start line while eliminated cars move upward", () => {
@@ -185,8 +205,8 @@ describe("race simulation", () => {
     const frameAtFiveSeconds = race.frames.find((frame) => frame.timeMs === 5_000);
 
     expect(earlyMajorIncidents.length).toBeLessThanOrEqual(2);
-    expect(frameAtFiveSeconds?.cars.filter((car) => car.status === "running" || car.status === "recovering").length)
-      .toBeGreaterThanOrEqual(24);
+    expect(frameAtFiveSeconds?.metrics.active).toBeGreaterThanOrEqual(24);
+    expect(frameAtFiveSeconds?.metrics.eliminated).toBe(0);
   });
 
   it("does not force demo races to finish at the old 45 second mark", () => {

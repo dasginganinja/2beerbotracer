@@ -84,6 +84,16 @@ Reason: The two rows are intentionally close together at the line. Treating that
 
 Refinement: Contact handling must include positional separation and active-belt boundary enforcement. Velocity-only collision response lets cars overlap visually even when the event logic thinks they collided.
 
+Second refinement: Starting row spacing must be based on the rear car nose meeting the front car tail, not half-car center spacing. Bumper compression is capped to a few simulated pixels because metal bumpers do not squash deeply.
+
+### Expose physics knobs in-scene
+
+Decision: The POC scene shows a compact physics debug panel with current belt speed, track angle, angle assist, rolling resistance, yaw wheel-speed loss/recovery, bumper compression, contact bounce, seam shift, active/sliding/eliminated counts, average wheel speed, and average traction.
+
+Reason: The physical model is still an approximation. Showing the knobs makes tuning conversations concrete and prevents hidden assumptions about friction, wheel speed, or collision surfaces.
+
+Current limitation: The simulation does not model each wheel or metal material properties directly. It uses per-car wheel speed, traction, yaw loss, rolling resistance, bumper compression caps, and contact damping as the tunable proxy.
+
 ### Keep POC assets code-native
 
 Decision: Use Pixi `Graphics` and text for placeholder art.

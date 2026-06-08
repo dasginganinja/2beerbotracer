@@ -37,6 +37,7 @@ export type RaceResult = {
 export type RaceFrame = {
   timeMs: number;
   beltSpeedMph: number;
+  metrics: RaceFrameMetrics;
   cars: Array<{
     racerId: string;
     progress: number;
@@ -47,6 +48,14 @@ export type RaceFrame = {
     y: number;
     scale: number;
   }>;
+};
+
+export type RaceFrameMetrics = {
+  active: number;
+  sliding: number;
+  eliminated: number;
+  averageWheelSpeed: number;
+  averageTraction: number;
 };
 
 export type RaceTimelineEvent = {
@@ -61,6 +70,22 @@ export type SimulatedRace = {
   results: RaceResult[];
   frames: RaceFrame[];
   timeline: RaceTimelineEvent[];
+  tuning: PhysicsTuning;
+};
+
+export type PhysicsTuning = {
+  beltStartMph: number;
+  beltFullMph: number;
+  beltHoldMs: number;
+  beltRampMs: number;
+  trackAngleDeg: number;
+  trackAngleAssistPxPerSecPerDeg: number;
+  rollingResistancePerSecond: number;
+  yawWheelLossPerSecond: number;
+  yawRecoverPerSecond: number;
+  maxBumperCompressionPx: number;
+  contactRestitution: number;
+  seamShiftPx: number;
 };
 
 type SimulateRaceInput = {
@@ -111,9 +136,11 @@ const SIM_HEIGHT = 520;
 const SIM_SLOT_COLUMNS = 15;
 const SIM_SLOT_WIDTH = SIM_WIDTH / SIM_SLOT_COLUMNS;
 const SIM_FRONT_LINE_Y = 446;
-const SIM_CAR_NOSE_TO_CENTER = 54;
+const SIM_CAR_NOSE_TO_CENTER = 66;
+const SIM_CAR_TAIL_TO_CENTER = 48;
 const SIM_START_HOLD_Y = SIM_FRONT_LINE_Y - SIM_CAR_NOSE_TO_CENTER;
-const SIM_ROW_SPACING = 54;
+const SIM_MAX_BUMPER_COMPRESSION = 5;
+const SIM_ROW_SPACING = SIM_CAR_NOSE_TO_CENTER + SIM_CAR_TAIL_TO_CENTER - SIM_MAX_BUMPER_COMPRESSION;
 const SIM_START_Y = [SIM_START_HOLD_Y, SIM_START_HOLD_Y - SIM_ROW_SPACING] as const;
 const SIM_LEFT_SAFE_X = 62;
 const SIM_RIGHT_SAFE_X = SIM_WIDTH - 62;
@@ -132,6 +159,19 @@ const MAX_LATERAL_SPEED_PX_PER_SEC = 24;
 const TRACK_ANGLE_ASSIST_PX_PER_SEC_PER_DEG = 8;
 const ACTIVE_YAW_LIMIT_RAD = 0.72;
 const SLIDING_YAW_LIMIT_RAD = 0.52;
+const DEFAULT_PHYSICS_TUNING_BASE = {
+  beltStartMph: BELT_START_MPH,
+  beltFullMph: BELT_FULL_MPH,
+  beltHoldMs: BELT_HOLD_MS,
+  beltRampMs: BELT_RAMP_MS,
+  trackAngleAssistPxPerSecPerDeg: TRACK_ANGLE_ASSIST_PX_PER_SEC_PER_DEG,
+  rollingResistancePerSecond: 0.012,
+  yawWheelLossPerSecond: 0.22,
+  yawRecoverPerSecond: 0.08,
+  maxBumperCompressionPx: SIM_MAX_BUMPER_COMPRESSION,
+  contactRestitution: 0.18,
+  seamShiftPx: 18,
+} as const;
 
 const DEMO_NAMES = [
   "Natmar",
@@ -216,9 +256,13 @@ export function createDemoRace(seed: number): DemoRace {
 
 export function simulateRace({ seed, racers, durationMs, trackAngleDeg = 6 }: SimulateRaceInput): SimulatedRace {
   const random = createRandom(seed);
+  const tuning: PhysicsTuning = {
+    ...DEFAULT_PHYSICS_TUNING_BASE,
+    trackAngleDeg: clamp(trackAngleDeg, -4, 8),
+  };
   const raceAllowsSideHangs = seed % 4 === 0;
   const sideHangLimit = raceAllowsSideHangs ? 1 + (seed % 12 === 0 ? 1 : 0) : 0;
-  const trackAngleAssistVelocity = clamp(trackAngleDeg, -4, 8) * TRACK_ANGLE_ASSIST_PX_PER_SEC_PER_DEG;
+  const trackAngleAssistVelocity = tuning.trackAngleDeg * tuning.trackAngleAssistPxPerSecPerDeg;
   let sideHangs = 0;
   const cars = racers.map<CarRuntime>((racer, index) => {
     const slotX = racer.column * SIM_SLOT_WIDTH + SIM_SLOT_WIDTH / 2;
@@ -270,7 +314,7 @@ export function simulateRace({ seed, racers, durationMs, trackAngleDeg = 6 }: Si
       const seamPhase = timeMs / 2_700 + seed * 0.01;
       const railBias = car.racer.column <= 2 ? -10 : car.racer.column >= 12 ? 10 : 0;
       const packDrift =
-        Math.sin(seamPhase) * 18 +
+        Math.sin(seamPhase) * tuning.seamShiftPx +
         Math.sign(Math.sin(seamPhase)) * 6 +
         Math.sin(timeMs / 4_600 + car.racer.row * 0.8) * 5 +
         Math.sin(timeMs / 3_700 + car.racer.column * 0.42) * 4 +
@@ -285,6 +329,18 @@ export function simulateRace({ seed, racers, durationMs, trackAngleDeg = 6 }: Si
       car.vx += (targetVx - car.vx) * 0.18;
       car.angularVelocity += -yawError * car.stability * 0.45 * SIM_STEP_SECONDS;
       car.angularVelocity *= 0.84;
+      const yawLoss = Math.abs(yawError) * tuning.yawWheelLossPerSecond * SIM_STEP_SECONDS;
+      const rollingLoss = tuning.rollingResistancePerSecond * SIM_STEP_SECONDS;
+      car.wheelSpeed = clamp(car.wheelSpeed - yawLoss - rollingLoss, 0.02, 1.35);
+      if (Math.abs(yawError) < 0.16 && car.traction > 0.38) {
+        car.wheelSpeed = clamp(car.wheelSpeed + tuning.yawRecoverPerSecond * SIM_STEP_SECONDS, 0.02, 1.35);
+      }
+      if (Math.abs(yawError) > 0.42 && random() < 0.002 + Math.abs(yawError) * 0.002) {
+        car.wheelSpeed = clamp(car.wheelSpeed - 0.18 - random() * 0.18, 0.02, 1.35);
+        if (car.wheelSpeed < 0.18) {
+          car.status = "sliding-up";
+        }
+      }
       car.x += car.vx * SIM_STEP_SECONDS;
       car.y += car.vy * SIM_STEP_SECONDS;
       car.angle += car.angularVelocity * SIM_STEP_SECONDS;
@@ -318,7 +374,9 @@ export function simulateRace({ seed, racers, durationMs, trackAngleDeg = 6 }: Si
       if (Math.abs(yawError) > SLIDING_YAW_LIMIT_RAD) {
         car.traction = clamp(car.traction - 0.055, 0.04, 1);
         car.wheelSpeed = clamp(car.wheelSpeed - 0.035, 0.08, 1.35);
-        car.status = car.status === "running" ? "sliding-up" : car.status;
+        if (car.wheelSpeed < 0.22 || car.y < SIM_START_HOLD_Y - 70) {
+          car.status = car.status === "running" ? "sliding-up" : car.status;
+        }
       }
 
       if (car.y < SIM_START_HOLD_Y - 112 && car.vy < -58 && car.status === "running") {
@@ -439,7 +497,7 @@ export function simulateRace({ seed, racers, durationMs, trackAngleDeg = 6 }: Si
     status: car.status === "pileup" ? "knocked-out" : finalStatus(car.status),
   }));
 
-  return { results, frames, timeline };
+  return { results, frames, timeline, tuning };
 }
 
 export function getAllowedTransition(from: RaceState, to: RaceState): boolean {
@@ -482,7 +540,7 @@ function getNoseY(car: CarRuntime): number {
 }
 
 function getTailY(car: CarRuntime): number {
-  return car.y - Math.sin(car.angle) * SIM_CAR_NOSE_TO_CENTER;
+  return car.y - Math.sin(car.angle) * SIM_CAR_TAIL_TO_CENTER;
 }
 
 function compressAgainstFrontBarrier(car: CarRuntime): void {
@@ -526,7 +584,7 @@ function resolveContact(
   const dx = b.x - a.x;
   const dy = b.y - a.y;
   const minX = 66;
-  const minY = 74;
+  const minY = SIM_CAR_NOSE_TO_CENTER + SIM_CAR_TAIL_TO_CENTER;
   if (Math.abs(dx) > minX || Math.abs(dy) > minY) {
     return;
   }
@@ -541,13 +599,24 @@ function resolveContact(
   const lateralCompression = Math.abs(dx) > 24 && overlapX > 36;
   const front = a.racer.row === 0 && b.racer.row === 1 ? a : b.racer.row === 0 && a.racer.row === 1 ? b : undefined;
   const rear = front === a ? b : front === b ? a : undefined;
+  const bumperCompression = front && rear ? getNoseY(rear) - getTailY(front) : -Infinity;
+  if (
+    front &&
+    rear &&
+    Math.abs(front.racer.column - rear.racer.column) <= 1 &&
+    Math.abs(dx) < 58 &&
+    bumperCompression > -4
+  ) {
+    resolveBumperContact(front, rear, bumperCompression, impulse, relativeSpeed, relativeYaw, timeMs, random, timeline);
+    return;
+  }
   const restingBumperContact =
     front !== undefined &&
     rear !== undefined &&
     Math.abs(front.racer.column - rear.racer.column) <= 1 &&
     Math.abs(dx) < 50 &&
     getNoseY(rear) >= getTailY(front) - 8 &&
-    getNoseY(rear) <= getTailY(front) + 24 &&
+    getNoseY(rear) <= getTailY(front) + SIM_MAX_BUMPER_COMPRESSION &&
     relativeSpeed < 26 &&
     relativeYaw < 0.24;
   const hardContact = impulse > 0.72 && (relativeSpeed > 40 || relativeYaw > 0.42 || lateralCompression);
@@ -638,15 +707,53 @@ function resolveContact(
   }
 }
 
+function resolveBumperContact(
+  front: CarRuntime,
+  rear: CarRuntime,
+  compression: number,
+  impulse: number,
+  relativeSpeed: number,
+  relativeYaw: number,
+  timeMs: number,
+  random: () => number,
+  timeline: RaceTimelineEvent[],
+): void {
+  compressNoseToTail(front, rear);
+
+  const sharedVy = (front.vy + rear.vy) / 2;
+  front.vy = front.vy * 0.72 + sharedVy * 0.28;
+  rear.vy = rear.vy * 0.72 + sharedVy * 0.28;
+  const excessCompression = Math.max(0, compression - SIM_MAX_BUMPER_COMPRESSION);
+  if (excessCompression > 0) {
+    rear.vy -= excessCompression * 0.16;
+    front.vy += excessCompression * 0.04;
+  }
+
+  const yawKick = impulse * 0.045 + relativeYaw * 0.035;
+  front.angularVelocity += (random() - 0.5) * yawKick;
+  rear.angularVelocity += (random() - 0.5) * yawKick;
+
+  if (relativeSpeed > 42 || relativeYaw > 0.38 || compression > SIM_MAX_BUMPER_COMPRESSION + 10) {
+    front.traction = clamp(front.traction - impulse * 0.018, 0.06, 1);
+    rear.traction = clamp(rear.traction - impulse * 0.034, 0.05, 1);
+    rear.wheelSpeed = clamp(rear.wheelSpeed - impulse * 0.05, 0.02, 1.35);
+    front.status = front.status === "running" ? "wobbling" : front.status;
+    rear.status = "wobbling";
+    if (timeMs - front.lastChaosAtMs > 2_200 && timeMs - rear.lastChaosAtMs > 2_200) {
+      pushChaos(timeline, relativeYaw > 0.38 ? rear : front, timeMs, "bump");
+    }
+  }
+}
+
 function compressNoseToTail(front: CarRuntime, rear: CarRuntime): void {
   const compression = getNoseY(rear) - getTailY(front);
-  if (compression < -4 || compression > 30) {
+  if (compression < -4) {
     return;
   }
 
-  const correction = clamp(compression + 6, 0, 18) * 0.35;
-  front.y = Math.min(SIM_START_HOLD_Y, front.y + correction * 0.22);
-  rear.y -= correction * 0.78;
+  const correction = Math.max(0, compression - SIM_MAX_BUMPER_COMPRESSION);
+  front.y = Math.min(SIM_START_HOLD_Y, front.y + correction * 0.08);
+  rear.y -= correction * 0.92;
   const sharedVy = (front.vy + rear.vy) / 2;
   front.vy = front.vy * 0.82 + sharedVy * 0.18;
   rear.vy = rear.vy * 0.82 + sharedVy * 0.18;
@@ -672,7 +779,7 @@ function settleContact(a: CarRuntime, b: CarRuntime): void {
   const dx = b.x - a.x;
   const dy = b.y - a.y;
   const minX = 66;
-  const minY = 74;
+  const minY = SIM_CAR_NOSE_TO_CENTER + SIM_CAR_TAIL_TO_CENTER;
   if (Math.abs(dx) > minX || Math.abs(dy) > minY) {
     return;
   }
@@ -757,9 +864,22 @@ function pushChaos(
 }
 
 function toFrame(timeMs: number, cars: CarRuntime[]): RaceFrame {
+  const activeCars = cars.filter((car) => !car.eliminated);
+  const sliding = cars.filter((car) => car.status === "sliding-up" || car.status === "wobbling" || car.status === "spinning").length;
   return {
     timeMs,
     beltSpeedMph: getBeltSpeedMph(timeMs),
+    metrics: {
+      active: activeCars.length,
+      sliding,
+      eliminated: cars.length - activeCars.length,
+      averageWheelSpeed: activeCars.length
+        ? activeCars.reduce((sum, car) => sum + car.wheelSpeed, 0) / activeCars.length
+        : 0,
+      averageTraction: activeCars.length
+        ? activeCars.reduce((sum, car) => sum + car.traction, 0) / activeCars.length
+        : 0,
+    },
     cars: cars.map((car) => ({
       racerId: car.racer.id,
       progress: clamp(car.y / SIM_HEIGHT, -1, 1),

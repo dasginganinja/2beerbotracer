@@ -47,6 +47,7 @@ FPS: 60
 - Uses larger cars on a narrower belt so the pack reads as side-by-side cars instead of strict lanes.
 - Supports `trackAngleDeg` as a tuning knob for how much the slight treadmill incline helps cars resist early slide-back. Default is `6`.
 - Holds a 2mph-equivalent treadmill speed for 60 seconds, then ramps toward a 10mph-equivalent speed.
+- Shows a physics debug panel with belt speed, track angle, rolling resistance, yaw wheel-speed loss/recovery, bumper compression, seam shift, active/sliding/eliminated counts, average wheel speed, and average traction.
 - Uses code-native PixiJS placeholder art so no assets are required.
 - Includes a `/control` placeholder documenting the future operator surface.
 
@@ -55,6 +56,7 @@ FPS: 60
 - `/control` is not wired to the scene or bot yet.
 - `mode=local` and `mode=hosted` are labels only in this POC.
 - The scene winner/status order is browser-simulated in demo mode.
+- The physics model is simplified. It does not yet simulate each wheel or metal material properties directly; it approximates those effects with per-car wheel speed, traction, yaw loss, low rolling resistance, hard bumper compression limits, and contact damping.
 - Real `trackracerbot` WebSocket integration is deferred to the next phase.
 - Sound, custom branding, transparent compositing QA, and asset polish are deferred.
 
